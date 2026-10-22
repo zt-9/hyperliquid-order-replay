@@ -2,6 +2,8 @@
 
 Explore a wallet’s trades on a chart, replay its activity, and browse its trade history. No wallet connection or keys needed.
 
+[Try it online](https://hyperliquid-wallet-replay.modestbox18.chatgpt.site) — free hosted version; no install required.
+
 ![Wallet trade replay preview](docs/preview.gif)
 
 ## Start
@@ -25,7 +27,8 @@ Open **[localhost:3001](http://127.0.0.1:3001/)**. Keep the terminal running; pr
 
 - History is limited to the data returned by Hyperliquid—up to 2,000 recent fills per sync, not the wallet’s complete lifetime history.
 - Order placements and historical positions can be reconstructed estimates. Current account metrics are separate from the replay cursor.
-- Account recording runs while the local server is running. Saved data stays in `data/`.
+- Local: account recording runs while the server is running; saved data stays in `data/`.
+- Online: snapshots update while the page is open; saved history stays in your browser.
 
 For development: `make dev` starts live reload, `make test` runs tests, and `make help` lists commands.
 

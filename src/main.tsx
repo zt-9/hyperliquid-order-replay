@@ -9,12 +9,13 @@ import { MarketChart } from './MarketChart';
 import { TradeHistory } from './TradeHistory';
 import type { OverlayOptions } from './OperationOverlay';
 import './style.css';
+import { HOSTED } from './runtime';
 const fmt=(n:number,precision=2)=>n.toLocaleString('en-US',{maximumFractionDigits:precision});
 const usd=(n:number)=>`${n<0?'−':''}$${fmt(Math.abs(n))}`;
 const price=(n:number)=>`$${fmt(n,n>=100?2:n>=1?4:n>=.01?6:8)}`;
 const suggestedInterval=(span:number):Interval=>span<86400000?'1m':span<7*86400000?'15m':span<60*86400000?'1h':'4h';
 const date=(seconds:number)=>new Date(seconds*1000).toISOString().replace('T',' ').slice(0,16);
-async function request<T>(url:string,method='GET',signal?:AbortSignal):Promise<T>{const res=await fetch(url,{method,signal});const body=await res.json();if(!res.ok)throw new Error(body.error??'Request failed');return body as T;}
+async function request<T>(url:string,method='GET',signal?:AbortSignal):Promise<T>{if(HOSTED)return (await import('./hosted-api')).hostedRequest<T>(url,method,signal);const res=await fetch(url,{method,signal});const body=await res.json();if(!res.ok)throw new Error(body.error??'Request failed');return body as T;}
 function App(){
   const [view,setView]=useState<'explorer'|'history'>(()=>location.hash==='#trade-history'?'history':'explorer');
   function switchView(next:'explorer'|'history'){setView(next);setPlaying(false);history.replaceState(null,'',next==='history'?'#trade-history':'#wallet-overview');}
@@ -54,6 +55,7 @@ function App(){
     try{
       let next:Snapshot;
       if(sync)next=await request<Snapshot>(`/api/wallet/${address}/sync`,'POST');
+      else if(HOSTED)next=await request<Snapshot>(`/api/wallet/${address}`);
       else{
         const response=await fetch(`/api/wallet/${address}`);
         if(response.status===404)next=await request<Snapshot>(`/api/wallet/${address}/sync`,'POST');
@@ -135,6 +137,7 @@ function App(){
   return <main className="terminal">
     <header className="topbar shared-header"><a href="/" className="brand"><span className="original-mark">H<span>↗</span></span><b className="original-wordmark">REPLAY</b></a><div className="top-nav" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?'explorer':e.key==='End'?'history':view==='explorer'?'history':'explorer';switchView(next);document.getElementById(next+'-tab')?.focus();}}}><button id="explorer-tab" role="tab" aria-selected={view==='explorer'} aria-controls="explorer-panel" tabIndex={view==='explorer'?0:-1} className={view==='explorer'?'nav-active':''} onClick={()=>switchView('explorer')}>Wallet explorer</button><button id="history-tab" role="tab" aria-selected={view==='history'} aria-controls="history-panel" tabIndex={view==='history'?0:-1} className={view==='history'?'nav-active':''} onClick={()=>switchView('history')}>Trade history</button></div><section className="shared-wallet" aria-label="Active wallet">{walletEditing?<form className="wallet-edit-form" onSubmit={e=>{e.preventDefault();void loadWallet(false);}}><input autoFocus aria-label="Wallet address" value={wallet} onChange={e=>setWallet(e.target.value)} spellCheck={false} onKeyDown={e=>{if(e.key==='Escape'){setWalletEditing(false);setWallet(snapshot?.wallet??EXAMPLE_WALLET);}}}/><button disabled={busy||!/^0x[0-9a-fA-F]{40}$/.test(wallet)}>{busy?'Loading…':'Load wallet'}</button><button type="button" onClick={()=>{setWalletEditing(false);setWallet(snapshot?.wallet??EXAMPLE_WALLET);}}>Cancel</button></form>:<div className="shared-wallet-controls"><button className="wallet-address-button" aria-label="Change wallet address" title="Change wallet" onClick={()=>{setWallet(snapshot?.wallet??wallet);setWalletEditing(true);}}>{snapshot?.wallet??(busy?'Loading wallet…':wallet)}</button><button className="copy-address" title={copyStatus==='Copied'?'Address copied':'Copy wallet address'} aria-label="Copy wallet address" disabled={!snapshot} onClick={()=>void copyAddress()}>{copyStatus==='Copied'?'✓':'⧉'}</button><button type="button" className="button-icon" title="Fetch latest wallet history" aria-label="Sync wallet" disabled={busy||!snapshot} onClick={()=>void loadWallet(true,snapshot!.wallet)}>{busy?'…':'↻'}</button></div>}<span className="wallet-copy-status" role="status">{copyStatus}</span></section></header>
 
+    {HOSTED&&<div className="hosted-note">Live public Hyperliquid data · Account updates run while this page is open · Saved history stays in your browser</div>}
     {error&&<div className="error-banner" role="alert">{error}</div>}
     {leverageError&&<div className="error-banner" role="alert">{leverageError}</div>}
     <div id="explorer-panel" role="tabpanel" aria-labelledby="explorer-tab" hidden={view!=='explorer'}>
@@ -159,7 +162,7 @@ function App(){
     <details className="data-notes"><summary><span>ⓘ Data coverage & reconstruction</span><span>Public API · limited history</span></summary><div><p><b>B/S badges</b> summarize actual fills. Nearby same-side executions are grouped based on chart zoom; hover or click to inspect quantity, average price, and fill count. <b>Dashed order lines</b> estimate lifetimes using the order timestamp, latest price/size, and final status. Order modifications are not available. Historical records marked open but absent from current open orders are excluded because their end time is unknown.</p>{snapshot?.warnings.map(w=><p key={w}>{w}</p>)}<p>At candle close, position and closed PnL use only fills observed up to that point. Closed PnL excludes fees, funding, transfers and unrealized PnL. Account and leverage metrics at the top are current snapshots. The leverage setting (cross/isolated) is reported by Hyperliquid. Gross account leverage is total perpetual notional divided by account equity; selected-market exposure uses that position’s notional over the same equity. These are exposure measures, not liquidation-risk ratios. Account snapshots are recorded in the background across every discovered DEX. The current reported leverage appears on each market tab and in the positions table. Historical configured leverage settings remain unavailable before recording began. Candles are limited to the most recent 5,000 bars per interval. No market data is synthesized.</p></div></details>
     </div>
     <div id="history-panel" role="tabpanel" aria-labelledby="history-tab" hidden={view!=='history'}><TradeHistory key={snapshot?.wallet??'empty'} snapshot={snapshot} busy={busy}/></div>
-    <footer><span><i className="status-dot"/> Read-only · no wallet connection required</span><span>Hyperliquid public data / stored locally</span><span className="workspace-path">Wallet → Market → Replay</span></footer>
+    <footer><span><i className="status-dot"/> Read-only · no wallet connection required</span><span>{HOSTED?'Hyperliquid public data / browser storage':'Hyperliquid public data / stored locally'}</span><span className="workspace-path">Wallet → Market → Replay</span></footer>
   </main>;
 }
 function Metric({label,value,detail,positive}:{label:string;value:string;detail:string;positive?:boolean}){return <div className="metric"><span>{label}</span><strong className={positive===undefined?'':positive?'positive':'negative'}>{value}</strong><small>{detail}</small></div>;}

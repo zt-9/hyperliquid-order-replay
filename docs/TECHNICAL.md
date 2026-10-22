@@ -37,7 +37,20 @@ SQLite tables: `snapshots`, `watched_wallets`, `account_frames`, `leverage_backf
 
 ## Hosting
 
-The current application is intended for local use. A shared deployment needs persistent storage, access control for recording, shared request limits, retention and backups. Sites hosting uses Cloudflare Workers and would require adapting the Node/SQLite recorder or hosting it separately.
+The public edition is a static Sites deployment:
+https://hyperliquid-wallet-replay.modestbox18.chatgpt.site
+
+Build it with `npm run build:hosted`. Site identity is in `.openai/hosting.json`. The default `make start` / `npm run build` preserves the local Node/SQLite edition.
+
+The hosted build calls Hyperliquid's public HTTPS API directly from each visitor's browser. There is no hosted Express server, server-side database, recording endpoint, connector access or API credential. IndexedDB retains up to eight wallet snapshots, the latest full account frame per wallet, and up to 2,000 account metric observations per wallet. Data is browser-local and independent of local `data/` files.
+
+Account polling runs approximately every 30 seconds while the wallet page is open. Closing the page stops polling. Hosted historical leverage backfill is disabled; no historical estimates are invented. The local edition retains its background recorder and backfill.
+
+### Abuse and availability
+
+Static hosting keeps expensive work off the origin: wallet syncing, account queries and candle fetching execute in the visitor's browser. The fixed upstream API URL cannot be redirected by wallet input. Requests use wallet/market validation, bounded history/candle retrieval, timeouts, a weighted request budget, a refresh cooldown, duplicate-request coalescing and short-lived candle caching. Browser-side limits help ordinary traffic; they are not a security boundary against a determined attacker.
+
+Only static HTML/JS/CSS is uploaded. No SQLite records, credentials, local environment files, or server runtime are deployed. Network-level availability and DDoS mitigation remain the hosting platform's responsibility. No custom WAF rule or absolute DDoS immunity is claimed, and no attack load testing was performed.
 
 ## References and attribution
 
