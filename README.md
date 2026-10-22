@@ -4,7 +4,7 @@ Explore a wallet’s trades on a chart, replay its activity, and browse its trad
 
 [Try it online](https://hyperliquid-wallet-replay.modestbox18.chatgpt.site) — free hosted version; no install required.
 
-![Wallet trade replay preview](docs/preview.gif)
+![BTC trade replay for wallet 0xdae4df7207feb3b350e4284c8efe5f7dac37f637](docs/preview.gif)
 
 ## Start
 
