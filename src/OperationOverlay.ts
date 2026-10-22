@@ -70,7 +70,7 @@ export class OperationOverlay implements ISeriesPrimitive {
           ctx.strokeStyle=buy?'#39cea4':'#f2798c';ctx.lineWidth=highlighted?1.8:1;
           ctx.beginPath();ctx.moveTo(cluster.x,anchor+(buy?2:-2));ctx.lineTo(cluster.x,py+(buy?-9:9));ctx.stroke();
           ctx.fillStyle=buy?(selected?'#226a54':'#123c33'):(selected?'#7d3549':'#4b2530');ctx.beginPath();ctx.roundRect(cluster.x-9,py-9,18,18,4);ctx.fill();ctx.stroke();
-          if(selected){ctx.globalAlpha=1;ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(cluster.x-12,py-12,24,24,6);ctx.stroke();}
+          if(selected){ctx.save();ctx.globalAlpha=1;ctx.strokeStyle='#ffe173';ctx.shadowColor='#ffd447';ctx.shadowBlur=9;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(cluster.x-12,py-12,24,24,6);ctx.stroke();ctx.restore();}
           ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
           ctx.fillStyle=buy?'#74e8c5':'#ffa8b6';ctx.fillText(buy?'B':'S',cluster.x,py+.5);
 
@@ -84,7 +84,7 @@ export class OperationOverlay implements ISeriesPrimitive {
         if(px!==null&&anchor!==null&&px>=0&&px<=mediaSize.width){
           const py=Math.max(14,Math.min(mediaSize.height-14,anchor+(buy?17:-17)));
           ctx.globalAlpha=1;ctx.strokeStyle=buy?'#62e8bf':'#ffa4b6';ctx.fillStyle=buy?'#226a54':'#7d3549';ctx.lineWidth=2;
-          ctx.beginPath();ctx.roundRect(px-10,py-10,20,20,4);ctx.fill();ctx.stroke();ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(px-13,py-13,26,26,6);ctx.stroke();
+          ctx.beginPath();ctx.roundRect(px-10,py-10,20,20,4);ctx.fill();ctx.stroke();ctx.save();ctx.strokeStyle='#ffe173';ctx.shadowColor='#ffd447';ctx.shadowBlur=9;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(px-13,py-13,26,26,6);ctx.stroke();ctx.restore();
           ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=buy?'#b8ffe5':'#ffd4dd';ctx.fillText(buy?'B':'S',px,py+.5);
         }
       }
