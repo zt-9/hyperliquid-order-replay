@@ -37,3 +37,21 @@ test('wallet addresses are strictly validated',()=>{
  assert.equal(validWallet('../../etc/passwd'),false);
  assert.equal(validWallet('0x123'),false);
 });
+test('stale open records do not invent still-resting historical orders',()=>{
+ const data=demoSnapshot();
+ data.historicalOrders.push({order:{...data.openOrders[0],oid:9999},status:'open',statusTimestamp:data.fetchedAt});
+ assert.ok(!eventsFrom(data).some(e=>e.oid===9999));
+});
+test('current open order fields take precedence over older history observations',()=>{
+ const data=demoSnapshot();const live=data.openOrders[0];
+ data.historicalOrders.push({order:{...live,limitPx:'1'},status:'open',statusTimestamp:data.fetchedAt});
+ assert.equal(eventsFrom(data).find(e=>e.oid===live.oid)?.price,live.limitPx);
+});
+test('same-millisecond fills preserve chronological API order rather than random trade ID order',()=>{
+ const data=demoSnapshot();
+ const fill=data.fills[0];
+ data.fills=[{...fill,tid:100,sz:'0.2',startPosition:'0.3'},{...fill,tid:999,sz:'0.3',startPosition:'0'}];
+ const events=eventsFrom(data);
+ const state=stateAt(events,events.length-1);
+ assert.equal(state.position,.5);assert.equal(state.discontinuities,0);
+});

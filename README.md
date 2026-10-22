@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. The synthetic demo works without calling Hyperliquid. Paste a public account address and choose **Sync wallet** for recent live history; **Load saved** retrieves the latest locally saved snapshot.
+Open http://127.0.0.1:5173. The app opens the multi-token example wallet `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`. **Load wallet** retrieves its saved snapshot (or syncs an unseen address); the refresh button syncs recent live history. Market shortcuts show current position direction and size. A snapshot fixture remains available at `/api/demo` for tests.
 
 For a single local service:
 
@@ -24,7 +24,9 @@ Open http://127.0.0.1:3001. The service binds to loopback. Wallet snapshots live
 
 ## First version
 
-- React + TypeScript UI with an SVG event-price chart, play/pause, step, speed, seek, and market selection.
+- React + TypeScript terminal interface with TradingView Lightweight Charts: market candles, volume, actual fill bubbles at execution prices, estimated order lifetimes, observed position and closed PnL panes.
+- All available operations are shown initially. **Replay** advances candles with future candles and operations hidden. Play/pause, bar stepping, seek, speed, zoom, pan, and candle inspection are supported.
+- Multiple markets, automatic starting intervals, candle/line view, and execution/order/buy/sell/label filters. Current account metrics are explicitly separate from historical reconstruction.
 - Node + Express service with input validation, upstream timeouts, retry/backoff, and a sync cooldown.
 - SQLite saves raw API payloads as separate snapshots. Loading uses the latest snapshot; snapshots are not yet merged into continuous history.
 - Shared deterministic replay model, partial-fill handling, fill deduplication, and position discontinuity detection.
@@ -34,11 +36,11 @@ Open http://127.0.0.1:3001. The service binds to loopback. Wallet snapshots live
 
 This is **bounded, approximate wallet replay**, not a full historical order book. The first implementation uses `historicalOrders`, `userFills`, and `frontendOpenOrders`, fetching at most 2,000 historical orders and 2,000 recent fills per sync. Public `userFillsByTime` pagination can extend fill retrieval to the latest 10,000 fills; that follow-up is not implemented yet.
 
-The latest order record supplies a timestamp and current fields, not its full edit history. Placement events and resting sizes are estimates. Terminal statuses and fill records are reported observations. Same-time events use a deterministic display order (placement, fill, status), not proven intra-block sequencing. The three API requests are not atomic.
+The latest order record supplies a timestamp and current fields, not its full edit history. Placement events and resting sizes are estimates. Terminal statuses and fill records are reported observations. Same-time events use a deterministic display order (placement, fill, status); equal-time fills preserve the API response chronology rather than sorting random trade IDs. This is not a complete intra-block order update sequence. The three API requests are not atomic.
 
-The chart plots wallet event prices, **not market candles**. Position values anchor to each fill's `startPosition`; unknown starting positions stay unknown. These estimates apply to perpetual fills, not spot balances. Closed PnL is the sum of observed `closedPnl`, excludes funding, and is not an account performance return. Arithmetic is for visualization and is not suitable for execution or accounting.
+The chart uses real Hyperliquid `candleSnapshot` OHLCV bars, with independent limits of 5,000 recent bars per interval. Each token loads its own candles. Market responses are cached briefly and requests are queued. No synthetic market bars are substituted. Position values anchor to each fill's `startPosition`; unknown starting positions stay unknown. These estimates apply to perpetual fills, not spot balances. Closed PnL is the sum of observed `closedPnl`, excludes funding, and is not an account performance return. Arithmetic is for visualization and is not suitable for execution or accounting.
 
-Scope currently covers the default perp DEX and returned spot identifiers. Additional perp DEX discovery, candles, live recording, archival providers, and full account balance reconstruction are future work. No trading or key handling exists.
+Scope currently covers current positions from the default perp DEX and market identifiers returned in history. Additional perp DEX account discovery, live recording, archival providers, and full account balance reconstruction are future work. Historical records marked open but absent from current open orders are excluded from estimated lifetimes because their end time is unknown. No trading or key handling exists.
 
 ## Validation
 
@@ -55,3 +57,7 @@ See [the evaluated implementation plan](docs/PLAN.md) for decisions and next mil
 - [API limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits)
 
 This is an early local prototype. Before internet-facing deployment, add access control, durable worker ingestion, shared rate limiting, bounded retention, operational monitoring, and backup/restore. Do not expose the current local service directly to the internet.
+
+## Chart attribution
+
+Charts use [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) under Apache-2.0; the chart logo and attribution link are preserved. The visual workflow was informed by [Paul’s dashboard](https://paul.catseye.today/). This implementation fetches public Hyperliquid data directly, not the reference site’s stored history.

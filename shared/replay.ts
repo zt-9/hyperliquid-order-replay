@@ -7,8 +7,9 @@ export interface Fill {
   coin: string; oid: number; tid: number; side: 'A' | 'B'; px: string; sz: string;
   time: number; startPosition: string; closedPnl: string; fee: string; feeToken?: string;
 }
+import type { AccountState } from './market.js';
 export interface Snapshot {
-  wallet: string; fetchedAt: number; historicalOrders: HistoricalOrder[];
+  wallet: string; fetchedAt: number; account?: AccountState; historicalOrders: HistoricalOrder[];
   openOrders: Order[]; fills: Fill[]; warnings: string[];
 }
 export interface ReplayEvent {
@@ -19,8 +20,12 @@ export interface ReplayEvent {
 export function eventsFrom(snapshot: Snapshot): ReplayEvent[] {
   const events: ReplayEvent[] = [];
   const orders = new Map<string, Order>();
-  for (const { order } of snapshot.historicalOrders) orders.set(`${order.coin}:${order.oid}`, order);
-  for (const order of snapshot.openOrders) if (!orders.has(`${order.coin}:${order.oid}`)) orders.set(`${order.coin}:${order.oid}`, order);
+  const current = new Set(snapshot.openOrders.map(order => `${order.coin}:${order.oid}`));
+  for (const { order, status } of snapshot.historicalOrders) {
+    if (status === 'open' && !current.has(`${order.coin}:${order.oid}`)) continue;
+    orders.set(`${order.coin}:${order.oid}`, order);
+  }
+  for (const order of snapshot.openOrders) orders.set(`${order.coin}:${order.oid}`, order);
   // The order timestamp implies placement; latest order fields are not guaranteed
   // to match the original placement when an order has been edited.
   for (const order of orders.values()) events.push({
@@ -36,7 +41,9 @@ export function eventsFrom(snapshot: Snapshot): ReplayEvent[] {
       evidence: 'reported', status: row.status });
   }
   const seen = new Set<string>();
-  for (const fill of snapshot.fills) {
+  // userFills is newest first, including same-millisecond executions. Trade IDs
+  // are not sequence numbers. Reverse source order before the stable time sort.
+  for (const fill of [...snapshot.fills].reverse()) {
     const id = `fill:${fill.coin}:${fill.tid}`;
     if (seen.has(id)) continue;
     seen.add(id);
@@ -44,7 +51,7 @@ export function eventsFrom(snapshot: Snapshot): ReplayEvent[] {
       kind: 'fill', price: fill.px, size: fill.sz, evidence: 'reported', fill });
   }
   const priority = { placement: 0, fill: 1, status: 2 };
-  return events.sort((a, b) => a.time - b.time || priority[a.kind] - priority[b.kind] || a.id.localeCompare(b.id));
+  return events.sort((a, b) => a.time - b.time || priority[a.kind] - priority[b.kind]);
 }
 // Call with one market only. Numeric conversions are for display, never execution.
 export function stateAt(events: ReplayEvent[], index: number) {

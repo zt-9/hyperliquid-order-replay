@@ -14,7 +14,7 @@ Proceed with public-data replay, but frame it as bounded and evidence-aware. A f
 
 - TypeScript end to end: shared event contracts between ingestion, replay, and UI.
 - React and Vite: responsive interactive visualization with a small local setup.
-- SVG initially: price/time marks, order lifetimes, and cursor. Evaluate a market chart library when adding candles.
+- TradingView Lightweight Charts: actual candle/volume visualization, execution bubbles and estimated lifecycle primitives, with aligned position and observed PnL panes.
 - Node 24 and Express: a small service, no separate backend runtime.
 - SQLite WAL: persist original payloads for debugging and future replay corrections.
 - npm lockfile: reproducible installs; Node test runner for replay correctness.
@@ -27,9 +27,17 @@ A single repository is appropriate for now. Keep analysis in this repository as 
 
 Wallet sync and raw snapshot storage; deterministic event normalization; inferred placement vs reported execution/status; partial fills; cursor-anchored positions; demo; visualization, seeking, stepping and event playback; basic error and empty states.
 
-### 2. Make observed history more useful — next
+### 2. Market chart and multi-token workflow — implemented initial slice
 
-Paginate fills with timestamp overlap and deduplication; flag ambiguous page boundaries; show per-source coverage bounds; validate upstream payload schemas. Merge recorded observations with stable event identities while retaining provenance and retrieval times. Add candle context and filters, wallet bookmarks, shareable cursor URLs, raw export, and additional perp DEX discovery. Add independent server/API integration tests.
+Replaced the event-price SVG with Lightweight Charts. Real market candles and volume are overlaid with execution bubbles at fill prices and estimated order lifetimes. Added aligned observed-position/closed-PnL panes, current-account metrics, candle inspection, zoom/pan, filters, and candle-driven replay that hides future observations. Market shortcuts expose current long/short positions, use token-specific price precision, and choose an initial interval based on history duration. The original H↗ REPLAY logo is preserved.
+
+The default example is `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`, a multi-token wallet. The earlier example `0xdae4df7207feb3b350e4284c8efe5f7dac37f637` was also checked with live API data. Neither address is embedded in test fixtures or credentials.
+
+Same-millisecond fill ordering now preserves source chronology: trade IDs cannot be used as execution sequence numbers. Stale historical open records absent from current open orders are excluded from estimated lifetimes. Candles are fetched separately, briefly cached, and queued to avoid conflicting requests during token/interval switches.
+
+### 2b. Extend observed history — next
+
+Paginate fills with timestamp overlap and deduplication; flag ambiguous page boundaries; show per-source coverage bounds; validate upstream payload schemas. Merge recorded observations with stable event identities while retaining provenance and retrieval times. Add wallet bookmarks, shareable cursor URLs, raw export, and additional perp DEX discovery. Add independent server/API integration tests.
 
 ### 3. Record forward and deploy reliably
 
@@ -45,4 +53,4 @@ First establish forward stream quality and replay correctness. Start with paper 
 
 ## Key limitations of milestone 1
 
-No candles, live websocket recording, archival data, fill pagination, snapshot merging, order edit reconstruction, spot balances, full performance statistics, Docker packaging, authentication, or production hardening. The latest snapshot remains a bounded observation even if multiple raw snapshots have been saved. Same-millisecond ordering is a deterministic display convention.
+No live websocket recording, archival data, fill pagination, snapshot merging, order edit reconstruction, spot balances, full performance statistics, Docker packaging, authentication, or production hardening. The latest snapshot remains a bounded observation even if multiple raw snapshots have been saved. Same-millisecond placement/fill/status ordering is a deterministic display convention; fills retain source chronology.
