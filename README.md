@@ -4,23 +4,19 @@ A local-first wallet visualization tool for Hyperliquid. Replay observed orders 
 
 ## Run
 
-Requires Node.js 24+ and npm. Node's bundled SQLite API is currently experimental.
+Requires Node.js 24+, npm, and Make. Node's bundled SQLite API is currently experimental.
+
+From the repository root, one command installs dependencies, builds the frontend, and starts the server and account recorder:
 
 ```sh
-npm ci
-npm run dev
+make start
 ```
 
-Open http://127.0.0.1:5173. The app opens the most active fetched market in the multi-token example wallet `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`. **Load wallet** retrieves its saved snapshot (or syncs an unseen address); the refresh button syncs recent live history. Market shortcuts show current position direction and size. A snapshot fixture remains available at `/api/demo` for tests.
+Open http://127.0.0.1:3001. Keep the command running; Ctrl+C stops the service and recorder. If an instance is already running on port 3001, stop it before starting another. The service binds to loopback. Wallet snapshots live in `data/replay.sqlite` (ignored by Git).
 
-For a single local service:
+For frontend live reload, use `make dev` and open http://127.0.0.1:5173. Use `make build` to build without starting, `make test` for tests, and `make help` for available commands. npm commands remain available (`npm ci`, `npm run build`, `npm start`).
 
-```sh
-npm run build
-npm start
-```
-
-Open http://127.0.0.1:3001. The service binds to loopback. Wallet snapshots live in `data/replay.sqlite` (ignored by Git). Run commands from the repository root.
+The app opens the most active fetched market in the multi-token wallet `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`. Click the address in the shared header to load a different wallet; the refresh icon syncs recent live history. Market shortcuts show position direction and reported leverage. A snapshot fixture remains available at `/api/demo` for tests.
 
 ## First version
 
