@@ -5,15 +5,16 @@ import { candleIndexAt } from '../shared/market';
 import { executionGroups, type ScreenExecutionCluster } from '../shared/executions';
 import type { ReplayEvent } from '../shared/replay';
 import { OperationOverlay, type OverlayOptions } from './OperationOverlay';
-interface Props { coin:string; barSeconds:number; candles:Candle[]; events:ReplayEvent[]; cursor:number; replay:boolean; options:OverlayOptions; chartType:'candles'|'line'; onSelect:(index:number)=>void; resetKey:string; }
-export function MarketChart({coin,barSeconds,candles,events,cursor,replay,options,chartType,onSelect,resetKey}:Props) {
+interface Props { coin:string; barSeconds:number; candles:Candle[]; events:ReplayEvent[]; cursor:number; replay:boolean; options:OverlayOptions; chartType:'candles'|'line'; onSelect:(index:number)=>void; resetKey:string; selectedEvent?:ReplayEvent; focusKey:number; onSelectEvent:(event:ReplayEvent)=>void; }
+export function MarketChart({coin,barSeconds,candles,events,cursor,replay,options,chartType,onSelect,resetKey,selectedEvent,focusKey,onSelectEvent}:Props) {
   const host=useRef<HTMLDivElement>(null);
   const api=useRef<{ chart:IChartApi; price:ISeriesApi<'Candlestick'>; line:ISeriesApi<'Line'>; volume:ISeriesApi<'Histogram'>; position:ISeriesApi<'Line'>; pnl:ISeriesApi<'Line'>; overlay:OperationOverlay; overlayOn: 'candles'|'line' } | null>(null);
-  const latest=useRef({candles,onSelect});latest.current={candles,onSelect};
+  const latest=useRef({candles,onSelect,onSelectEvent});latest.current={candles,onSelect,onSelectEvent};
   const [hover,setHover]=useState<Candle>();
-  const [tradeTooltip,setTradeTooltip]=useState<{cluster:ScreenExecutionCluster;x:number;y:number;pinned:boolean}>();
-  const tooltipPinned=useRef(false);
-  useEffect(()=>{setTradeTooltip(undefined);tooltipPinned.current=false;if(api.current){api.current.overlay.highlightedId=null;api.current.overlay.refresh();}},[coin,candles,replay,cursor]);
+  useEffect(()=>{setHover(undefined);setHoverValues(undefined);},[coin,candles]);
+  const [hoverValues,setHoverValues]=useState<{time:number;position:number|null;pnl:number|null}>();
+  const [tradeTooltip,setTradeTooltip]=useState<{cluster:ScreenExecutionCluster;x:number;y:number}>();
+  useEffect(()=>{setTradeTooltip(undefined);if(api.current){api.current.overlay.highlightedId=null;api.current.overlay.refresh();}},[coin,candles,replay,cursor]);
   useEffect(()=>{
     if(!host.current)return;
     const chart=createChart(host.current,{
@@ -29,26 +30,28 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
     const volume=chart.addSeries(HistogramSeries,{priceScaleId:'volume',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
     volume.priceScale().applyOptions({scaleMargins:{top:.86,bottom:0}});
     const position=chart.addSeries(LineSeries,{color:'#6399f5',lineWidth:2,title:'Position',priceFormat:{type:'custom',formatter:(value:number)=>`${value.toLocaleString('en-US',{maximumFractionDigits:5})}`},priceLineVisible:false},1);
-    const pnl=chart.addSeries(LineSeries,{color:'#2ec6a1',lineWidth:2,title:'Closed PnL',priceFormat:{type:'custom',formatter:(value:number)=>`$${value.toLocaleString(undefined,{maximumFractionDigits:0})}`},priceLineVisible:false},2);
+    const pnl=chart.addSeries(LineSeries,{color:'#2ec6a1',lineWidth:2,title:'Closed PnL',priceFormat:{type:'custom',formatter:(value:number)=>`$${value.toLocaleString('en-US',{maximumFractionDigits:4})}`},priceLineVisible:false},2);
     chart.panes()[0].setStretchFactor(6);chart.panes()[1].setStretchFactor(1);chart.panes()[2].setStretchFactor(1);
     const overlay=new OperationOverlay();price.attachPrimitive(overlay);
-    function showMarker(id:unknown,pinned:boolean){
+    function showMarker(id:unknown){
       const marker=overlay.markers.find(m=>m.id===id);
       if(!marker)return false;
-      setTradeTooltip({cluster:marker.cluster,x:Math.max(8,Math.min(host.current!.clientWidth-278,marker.x+16)),y:Math.max(34,Math.min(host.current!.clientHeight-225,marker.y+44)),pinned});
+      setTradeTooltip({cluster:marker.cluster,x:Math.max(8,Math.min(host.current!.clientWidth-278,marker.x+16)),y:Math.max(34,Math.min(host.current!.clientHeight-225,marker.y+72))});
       overlay.highlightedId=marker.id;overlay.refresh();return true;
     }
     chart.subscribeCrosshairMove(param=>{
       if(param.time){const i=candleIndexAt(latest.current.candles,Number(param.time));setHover(latest.current.candles[i]);}else setHover(undefined);
-      if(tooltipPinned.current)return;
-      if(!showMarker(param.hoveredObjectId,false)){setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();}
+      const positionData=param.seriesData.get(position),pnlData=param.seriesData.get(pnl);
+      setHoverValues(param.time?{time:Number(param.time),position:positionData&&'value' in positionData?positionData.value:null,pnl:pnlData&&'value' in pnlData?pnlData.value:null}:undefined);
+      if(!showMarker(param.hoveredObjectId)){setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();}
     });
     chart.subscribeClick(param=>{
-      if(showMarker(param.hoveredObjectId,true)){tooltipPinned.current=true;return;}
-      tooltipPinned.current=false;setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();
+      const marker=overlay.markers.find(m=>m.id===param.hoveredObjectId);
+      if(marker){setTradeTooltip(undefined);latest.current.onSelectEvent(marker.cluster.events.at(-1)!);return;}
+      setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();
       if(param.time){const i=candleIndexAt(latest.current.candles,Number(param.time));if(i>=0)latest.current.onSelect(i);}
     });
-    chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{tooltipPinned.current=false;setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();});
+    chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{setTradeTooltip(undefined);overlay.highlightedId=null;overlay.refresh();});
     api.current={chart,price,line,volume,position,pnl,overlay,overlayOn:'candles'};
     return()=>{chart.remove();api.current=null;};
   },[]);
@@ -79,7 +82,17 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
   },[candles,events,cursor,replay,options,chartType,coin,barSeconds]);
   useEffect(()=>{if(replay&&candles.length)api.current?.chart.timeScale().setVisibleLogicalRange({from:Math.max(-5,cursor-100),to:Math.max(100,cursor+15)});},[cursor,replay,candles]);
   useEffect(()=>{const a=api.current;if(!a||!candles.length)return;const executions=executionGroups(candles,events,barSeconds);if(executions.length)a.chart.timeScale().setVisibleLogicalRange({from:Math.max(-2,executions[0].index-10),to:candles.length+7});else a.chart.timeScale().fitContent();},[candles,resetKey]);
+  useEffect(()=>{
+    const a=api.current;if(!a)return;
+    a.overlay.selectedEvent=selectedEvent??null;a.overlay.refresh();
+    if(!selectedEvent||!candles.length)return;
+    const index=candleIndexAt(candles,selectedEvent.time/1000);if(index<0)return;
+    const range=a.chart.timeScale().getVisibleLogicalRange();
+    const span=Math.min(100,Math.max(24,range?range.to-range.from:70));
+    a.chart.timeScale().setVisibleLogicalRange({from:index-span/2,to:index+span/2});
+    a.chart.setCrosshairPosition(Number(selectedEvent.price),candles[index].time as UTCTimestamp,chartType==='candles'?a.price:a.line);
+  },[selectedEvent,focusKey,candles,chartType]);
   const formatPrice=(value:number)=>value.toLocaleString('en-US',{maximumFractionDigits:value>=100?2:value>=1?4:value>=.01?6:8});
   const candle=(hover && (!replay || hover.time <= (candles[cursor]?.time ?? 0)) ? hover : undefined)??candles[replay?cursor:candles.length-1];
-  return <div className="chart-frame"><div className="ohlc"><b>OHLC</b>{candle?<><span>O <em>{formatPrice(candle.open)}</em></span><span>H <em>{formatPrice(candle.high)}</em></span><span>L <em>{formatPrice(candle.low)}</em></span><span>C <em className={candle.close>=candle.open?'positive':'negative'}>{formatPrice(candle.close)}</em></span></>:<span>No candle selected</span>}<span className="utc-label">UTC</span></div><div className="chart-host" ref={host} role="img" aria-label="Interactive candlestick chart with volume, historical fills, order lifetimes, position, and observed closed PnL"/>{tradeTooltip&&<div className={`execution-tooltip ${tradeTooltip.pinned?'pinned':''}`} style={{left:tradeTooltip.x,top:tradeTooltip.y}} role="dialog" aria-label="Execution details"><div className="tooltip-heading"><b className={tradeTooltip.cluster.side==='B'?'positive':'negative'}>{tradeTooltip.cluster.side==='B'?'BUY':'SELL'} · {tradeTooltip.cluster.count} fill{tradeTooltip.cluster.count===1?'':'s'}</b>{tradeTooltip.pinned?<button aria-label="Close execution details" onClick={()=>{tooltipPinned.current=false;setTradeTooltip(undefined);if(api.current){api.current.overlay.highlightedId=null;api.current.overlay.refresh();}}}>×</button>:<small>Click to pin</small>}</div><dl><dt>Quantity</dt><dd>{tradeTooltip.cluster.size.toLocaleString('en-US',{maximumFractionDigits:6})} {coin}</dd><dt>Average price</dt><dd>${formatPrice(tradeTooltip.cluster.price)}</dd><dt>Notional</dt><dd>${tradeTooltip.cluster.notional.toLocaleString('en-US',{maximumFractionDigits:2})}</dd><dt>Time (UTC)</dt><dd>{new Date(Math.min(...tradeTooltip.cluster.events.map(e=>e.time))).toISOString().replace('T',' ').slice(0,19)}{tradeTooltip.cluster.count>1&&<><br/>– {new Date(Math.max(...tradeTooltip.cluster.events.map(e=>e.time))).toISOString().replace('T',' ').slice(0,19)}</>}</dd></dl><p>{tradeTooltip.cluster.firstIndex===tradeTooltip.cluster.lastIndex?'Grouped by candle and side':'Nearby executions grouped at this zoom level'}</p>{tradeTooltip.pinned&&<button className="inspect-execution" onClick={()=>{onSelect(tradeTooltip.cluster.lastIndex);tooltipPinned.current=false;setTradeTooltip(undefined);}}>Inspect candle →</button>}</div>}<span className="pane-label position-label">POSITION · OBSERVED FILLS</span><span className="pane-label pnl-label">CLOSED PNL · BEFORE FEES & FUNDING</span></div>;
+  return <div className="chart-frame"><div className="ohlc"><b>OHLC</b>{candle?<><span>O <em>{formatPrice(candle.open)}</em></span><span>H <em>{formatPrice(candle.high)}</em></span><span>L <em>{formatPrice(candle.low)}</em></span><span>C <em className={candle.close>=candle.open?'positive':'negative'}>{formatPrice(candle.close)}</em></span></>:<span>No candle selected</span>}<span className="utc-label">UTC</span></div><div className="chart-hover-values"><span>{hoverValues?new Date(hoverValues.time*1000).toISOString().replace('T',' ').slice(0,19)+' UTC':'Hover a candle to read position and PnL'}</span><span>Position <b>{hoverValues?.position!=null?hoverValues.position.toLocaleString('en-US',{maximumFractionDigits:8})+' '+coin:'—'}</b></span><span>Closed PnL <b>{hoverValues?.pnl!=null?'$'+hoverValues.pnl.toLocaleString('en-US',{maximumFractionDigits:6}):'—'}</b></span></div><div className="chart-host" ref={host} role="img" aria-label="Interactive candlestick chart with volume, historical fills, order lifetimes, position, and observed closed PnL"/>{tradeTooltip&&<div className="execution-tooltip" style={{left:tradeTooltip.x,top:tradeTooltip.y}} role="tooltip" aria-label="Execution details"><div className="tooltip-heading"><b className={tradeTooltip.cluster.side==='B'?'positive':'negative'}>{tradeTooltip.cluster.side==='B'?'BUY':'SELL'} · {tradeTooltip.cluster.count} fill{tradeTooltip.cluster.count===1?'':'s'}</b><small>Click to select</small></div><dl><dt>Quantity</dt><dd>{tradeTooltip.cluster.size.toLocaleString('en-US',{maximumFractionDigits:6})} {coin}</dd><dt>Average price</dt><dd>${formatPrice(tradeTooltip.cluster.price)}</dd><dt>Notional</dt><dd>${tradeTooltip.cluster.notional.toLocaleString('en-US',{maximumFractionDigits:2})}</dd><dt>Time (UTC)</dt><dd>{new Date(Math.min(...tradeTooltip.cluster.events.map(e=>e.time))).toISOString().replace('T',' ').slice(0,19)}{tradeTooltip.cluster.count>1&&<><br/>– {new Date(Math.max(...tradeTooltip.cluster.events.map(e=>e.time))).toISOString().replace('T',' ').slice(0,19)}</>}</dd></dl><p>{tradeTooltip.cluster.firstIndex===tradeTooltip.cluster.lastIndex?'Grouped by candle and side':'Nearby executions grouped at this zoom level'}</p></div>}<span className="pane-label position-label">POSITION · {hoverValues?.position!=null?hoverValues.position.toLocaleString('en-US',{maximumFractionDigits:8})+' '+coin:'OBSERVED FILLS'}</span><span className="pane-label pnl-label">CLOSED PNL · {hoverValues?.pnl!=null?'$'+hoverValues.pnl.toLocaleString('en-US',{maximumFractionDigits:6}):'BEFORE FEES & FUNDING'}</span></div>;
 }

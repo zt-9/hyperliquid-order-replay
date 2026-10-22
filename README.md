@@ -65,6 +65,12 @@ Charts use [TradingView Lightweight Charts](https://www.tradingview.com/lightwei
 
 The execution marker interaction follows [Binance’s B/S history icons](https://www.binance.com/en-AU/support/faq/detail/f32ddef520094124878ea6786bd743df) and [TradingView’s grouped executions](https://www.tradingview.com/support/solutions/43000763371-execution-marks/). Grouped badges summarize visible fills, not an exact single execution price; the popover explicitly shows the weighted average and fill count.
 
+## Shared wallet and chart selection
+
+A single wallet control lives in the application header above both tabs. It shows the active address with Copy, Change and Refresh actions; Change edits the address in place with Load/Cancel. Both views use the same loaded snapshot.
+
+Clicking an activity or execution marker selects its event directly, centers the chart around it, marks its precise time and price, and shows its details above the activity list. There is no extra Inspect candle step or bottom detail card. Clicking a candle pins its OHLC and reconstructed state. Hover readouts show position and closed PnL at that candle with decimal precision; these are candle-close observations, not intrabar position samples.
+
 ## Trade history tab
 
 The dedicated Trade history view lists every actual fill in the saved wallet snapshot, newest first, independently of chart market selection or replay cursor. Filter by token and page through 50 rows at a time. Columns show UTC execution time, token, buy/sell side, price, size, closed PnL and fees. The view shows snapshot coverage and the 2,000-fill API limit; it does not claim lifetime history. Wallet explorer retains its chart, selection and replay state when switching tabs, and playback pauses on tab changes.

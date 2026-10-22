@@ -11,6 +11,7 @@ export class OperationOverlay implements ISeriesPrimitive {
   cutoff = Infinity;
   barSeconds = 60;
   highlightedId: string | null = null;
+  selectedEvent:ReplayEvent|null=null;
   markers: { id:string; x:number; y:number; cluster:ScreenExecutionCluster }[] = [];
   options: OverlayOptions = { fills:true, orders:false, buys:true, sells:true, currentOnly:false };
   private view: IPrimitivePaneView = { zOrder: () => 'top', renderer: () => this.renderer };
@@ -60,7 +61,7 @@ export class OperationOverlay implements ISeriesPrimitive {
           const anchor=series.priceToCoordinate(anchorPrice);
           if(anchor===null||anchor<0||anchor>mediaSize.height)continue;
           const py=Math.max(12,Math.min(mediaSize.height-12,anchor+(buy?17:-17)));
-          const highlighted=this.highlightedId===cluster.id;
+          const highlighted=this.highlightedId===cluster.id||cluster.events.some(e=>e.id===this.selectedEvent?.id);
           ctx.globalAlpha=highlighted?1:.9;
           ctx.strokeStyle=buy?'#39cea4':'#f2798c';ctx.lineWidth=highlighted?1.8:1;
           ctx.beginPath();ctx.moveTo(cluster.x,anchor+(buy?2:-2));ctx.lineTo(cluster.x,py+(buy?-9:9));ctx.stroke();
@@ -69,6 +70,18 @@ export class OperationOverlay implements ISeriesPrimitive {
           ctx.fillStyle=buy?'#74e8c5':'#ffa8b6';ctx.fillText(buy?'B':'S',cluster.x,py+.5);
           if(highlighted){const avg=series.priceToCoordinate(cluster.price);if(avg!==null){ctx.setLineDash([2,3]);ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(cluster.x-18,avg);ctx.lineTo(cluster.x+18,avg);ctx.stroke();ctx.setLineDash([]);}}
           this.markers.push({id:cluster.id,x:cluster.x,y:py,cluster});
+        }
+      }
+      const selected=this.selectedEvent;
+      if(selected&&selected.time/1000<=this.cutoff){
+        const px=x(selected.time/1000),py=series.priceToCoordinate(Number(selected.price));
+        if(px!==null&&px>=0&&px<=mediaSize.width){
+          ctx.globalAlpha=.12;ctx.fillStyle='#f2cd80';ctx.fillRect(px-7,0,14,mediaSize.height);
+          ctx.globalAlpha=.9;ctx.strokeStyle='#f2cd80';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,mediaSize.height);ctx.stroke();ctx.setLineDash([]);
+          if(py!==null&&py>=0&&py<=mediaSize.height){ctx.fillStyle='#11151e';ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fill();ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.moveTo(px-13,py);ctx.lineTo(px+13,py);ctx.stroke();}
+          const label=selected.kind==='fill'?'SELECTED TRADE':'SELECTED ORDER';
+          ctx.font='600 9px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
+          const labelX=Math.max(6,Math.min(mediaSize.width-115,px+10));ctx.fillStyle='#252a2c';ctx.fillRect(labelX-4,8,110,18);ctx.fillStyle='#f2cd80';ctx.fillText(label,labelX,12);
         }
       }
       ctx.restore();
