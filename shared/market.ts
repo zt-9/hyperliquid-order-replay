@@ -4,7 +4,7 @@ export interface Candle { time: number; open: number; high: number; low: number;
 export interface CandleResponse { candles: Candle[]; fetchedAt: number; requestedStart: number; requestedEnd: number }
 export interface AccountState {
   marginSummary: { accountValue: string; totalNtlPos: string };
-  assetPositions: { position: { coin: string; szi: string; entryPx: string; unrealizedPnl: string; liquidationPx: string | null } }[];
+  assetPositions: { position: { coin: string; szi: string; entryPx: string; unrealizedPnl: string; liquidationPx: string | null; leverage?: { type: 'cross' | 'isolated'; value: number }; positionValue?: string; marginUsed?: string; maxLeverage?: number } }[];
   time?: number;
 }
 export const EXAMPLE_WALLET = '0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f';
@@ -21,4 +21,12 @@ export function interpolateLogical(logical: number, coordinateAt: (index: number
   const left = coordinateAt(lower);
   const right = coordinateAt(lower + 1);
   return left === null || right === null ? null : left + (right - left) * (logical - lower);
+}
+
+// Exposure/equity is distinct from the user-selected leverage setting.
+// Non-positive equity does not produce a meaningful finite leverage ratio.
+export function exposureLeverage(notional: string | undefined, equity: string | undefined): number | null {
+  if (notional === undefined || equity === undefined || notional.trim() === '' || equity.trim() === '') return null;
+  const n = Number(notional), e = Number(equity);
+  return Number.isFinite(n) && Number.isFinite(e) && e > 0 ? Math.abs(n) / e : null;
 }
