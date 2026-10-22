@@ -19,3 +19,21 @@ test('markers exclude executions outside candle coverage and put boundary fills 
  const groups=executionGroups(candles,[fill(99,'B','1','10'),fill(160,'A','1','12'),fill(340,'B','1','10')],60);
  assert.equal(groups.length,1);assert.equal(groups[0].index,1);
 });
+
+test('zoom-aware clustering preserves fills and separates buy from sell',async()=>{
+ const {clusterExecutions}=await import('../shared/executions.js');
+ const groups=executionGroups(candles,[fill(101,'B','2','10'),fill(165,'B','1','13'),fill(170,'A','1','12')],60);
+ const wide=clusterExecutions(groups,index=>index*40+20,300);
+ assert.equal(wide.length,3);
+ const narrow=clusterExecutions(groups,index=>index*4+20,300);
+ assert.equal(narrow.length,2);
+ const buy=narrow.find(g=>g.side==='B')!;
+ assert.equal(buy.count,2);assert.equal(buy.size,3);assert.equal(buy.price,11);
+ assert.equal(narrow.reduce((n,g)=>n+g.count,0),3);
+});
+test('offscreen executions never contribute to a visible marker',async()=>{
+ const {clusterExecutions}=await import('../shared/executions.js');
+ const groups=executionGroups(candles,[fill(101,'B','1','10'),fill(230,'A','1','12')],60);
+ const clusters=clusterExecutions(groups,index=>index===0?-100:50,100);
+ assert.equal(clusters.length,1);assert.equal(clusters[0].side,'A');
+});

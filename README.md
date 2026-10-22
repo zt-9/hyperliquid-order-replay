@@ -24,13 +24,13 @@ Open http://127.0.0.1:3001. The service binds to loopback. Wallet snapshots live
 
 ## First version
 
-- React + TypeScript terminal interface with TradingView Lightweight Charts: market candles, volume, actual execution dots plus explicit BUY/SELL arrows and aggregated quantities, estimated order lifetimes, observed position and closed PnL panes.
+- React + TypeScript terminal interface with TradingView Lightweight Charts: market candles, volume, compact B/S execution badges with zoom-aware grouping and details on hover or click, estimated order lifetimes, observed position and closed PnL panes.
 - All available operations are shown initially. **Replay** defaults to trade replay: it skips empty candles and reveals each candle containing executed trades, with future candles and operations hidden. Candle-by-candle playback remains available in the replay mode selector. Play/pause, bar stepping, seek, speed, zoom, pan, and candle inspection are supported.
 - Multiple markets, automatic starting intervals, candle/line view, and execution/order/buy/sell/label filters. Current account metrics are explicitly separate from historical reconstruction.
 - Node + Express service with input validation, upstream timeouts, retry/backoff, and a sync cooldown.
 - SQLite saves raw API payloads as separate snapshots. Loading uses the latest snapshot; snapshots are not yet merged into continuous history.
 - Shared deterministic replay model, partial-fill handling, fill deduplication, and position discontinuity detection.
-- An execution summary shows buy/sell quantity, volume-weighted average price and partial-fill count at the replay cursor. Arrows aggregate by candle and side; original fill records remain available under Operations. Partial labels are spaced to avoid overlap.
+- An execution summary shows buy/sell quantity, volume-weighted average price and partial-fill count at the replay cursor. Badges aggregate nearby same-side executions in screen space and separate as you zoom in; original fills remain available under Operations. Quantity, average price, notional and execution time range appear in a hover popover that can be pinned with a click. Candle quantities and raw fill dots are hidden. Estimated order lifetimes are off by default.
 - Explicit reported/inferred evidence labels and a synthetic demo fixture.
 
 ## Read the replay correctly
@@ -62,3 +62,5 @@ This is an early local prototype. Before internet-facing deployment, add access 
 ## Chart attribution
 
 Charts use [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) under Apache-2.0; the chart logo and attribution link are preserved. The visual workflow was informed by [Paul’s dashboard](https://paul.catseye.today/). This implementation fetches public Hyperliquid data directly, not the reference site’s stored history.
+
+The execution marker interaction follows [Binance’s B/S history icons](https://www.binance.com/en-AU/support/faq/detail/f32ddef520094124878ea6786bd743df) and [TradingView’s grouped executions](https://www.tradingview.com/support/solutions/43000763371-execution-marks/). Grouped badges summarize visible fills, not an exact single execution price; the popover explicitly shows the weighted average and fill count.

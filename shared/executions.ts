@@ -18,3 +18,19 @@ export function executionGroups(candles:Candle[],events:ReplayEvent[],barSeconds
 }
 export function tradeBars(groups:ExecutionGroup[]){return [...new Set(groups.map(g=>g.index))].sort((a,b)=>a-b);}
 export function nextTradeBar(bars:number[],cursor:number,direction:1|-1){return direction===1?bars.find(i=>i>cursor):bars.findLast(i=>i<cursor);}
+
+export interface ScreenExecutionCluster extends ExecutionGroup { id:string; x:number; firstIndex:number; lastIndex:number }
+// Cluster in screen space so zooming in separates fills without losing records.
+// Buy and sell groups stay separate; the badge is a summary, not an exact fill.
+export function clusterExecutions(groups:ExecutionGroup[],xAt:(index:number)=>number|null,width:number,gap=32):ScreenExecutionCluster[]{
+ const buckets=new Map<string,ScreenExecutionCluster>();
+ for(const group of groups){
+  const px=xAt(group.index);if(px===null||px<0||px>width)continue;
+  const bucket=Math.floor(px/gap),key=`${group.side}:${bucket}`;
+  const cluster=buckets.get(key)??{...group,id:key,x:Math.min(width-11,Math.max(11,(bucket+.5)*gap)),size:0,notional:0,price:0,count:0,events:[],firstIndex:group.index,lastIndex:group.index};
+  cluster.size+=group.size;cluster.notional+=group.notional;cluster.count+=group.count;
+  cluster.events.push(...group.events);cluster.price=cluster.notional/cluster.size;
+  cluster.lastIndex=group.index;cluster.index=group.index;buckets.set(key,cluster);
+ }
+ return [...buckets.values()];
+}
