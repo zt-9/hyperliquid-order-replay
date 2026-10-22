@@ -33,8 +33,8 @@ export class AccountRecorder {
       this.db.prepare('UPDATE watched_wallets SET last_attempt=? WHERE wallet=?').run(Date.now(),wallet);
       try{
         const frame=await this.accounts.capture(wallet);
-        this.db.prepare('INSERT INTO account_frames(wallet,captured_at,payload,error,leverage,equity,notional,position_count) VALUES(?,?,?,?,?,?,?,?)').run(wallet,frame.capturedAt,JSON.stringify(frame),frame.complete?null:frame.reasons.join('; '),frame.leverage,frame.equity,frame.notional,frame.positionCount);
-        this.db.prepare('UPDATE watched_wallets SET last_success=COALESCE(?,last_success),last_error=? WHERE wallet=?').run(frame.complete?frame.capturedAt:null,frame.complete?null:frame.reasons.join('; '),wallet);
+        this.db.prepare('INSERT INTO account_frames(wallet,captured_at,payload,error,leverage,equity,notional,position_count) VALUES(?,?,?,?,?,?,?,?)').run(wallet,frame.capturedAt,JSON.stringify(frame),null,frame.leverage,frame.equity,frame.notional,frame.positionCount);
+        this.db.prepare('UPDATE watched_wallets SET last_success=COALESCE(?,last_success),last_error=? WHERE wallet=?').run(frame.capturedAt,null,wallet);
         return frame;
       }catch(error){
         const message=error instanceof Error?error.message:'Account capture failed';
@@ -50,11 +50,11 @@ export class AccountRecorder {
   }
   status(wallet:string):RecorderStatus{
     const row=this.db.prepare('SELECT * FROM watched_wallets WHERE wallet=?').get(wallet);
-    const samples=Number(this.db.prepare('SELECT count(*) AS n FROM account_frames WHERE wallet=? AND payload IS NOT NULL AND error IS NULL').get(wallet)!.n);
+    const samples=Number(this.db.prepare('SELECT count(*) AS n FROM account_frames WHERE wallet=? AND payload IS NOT NULL').get(wallet)!.n);
     return {enabled:row?.enabled===1,intervalMs:RECORD_INTERVAL,lastAttempt:row?.last_attempt as number??null,lastSuccess:row?.last_success as number??null,lastError:row?.last_error as string??null,samples};
   }
   points(wallet:string):LeveragePoint[]{
-    const rows=this.db.prepare('SELECT captured_at,leverage,equity,notional,position_count,error FROM account_frames WHERE wallet=? AND captured_at>=? ORDER BY captured_at,id').all(wallet,Date.now()-30*86400000);
+    const rows=this.db.prepare("SELECT captured_at,leverage,equity,notional,position_count,COALESCE(error,json_extract(payload,'$.reasons[0]')) AS error FROM account_frames WHERE wallet=? AND captured_at>=? ORDER BY captured_at,id").all(wallet,Date.now()-30*86400000);
     const points:LeveragePoint[]=[];
     for(const row of rows){
       const time=Number(row.captured_at);const previous=points.at(-1);

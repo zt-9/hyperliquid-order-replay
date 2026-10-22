@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { eventsFrom, stateAt, type Snapshot, type ReplayEvent } from '../shared/replay';
 import { EXAMPLE_WALLET, INTERVALS, candleIndexAt, exposureLeverage, type Candle, type Interval } from '../shared/market';
@@ -10,6 +10,7 @@ import { TradeHistory } from './TradeHistory';
 import type { OverlayOptions } from './OperationOverlay';
 import './style.css';
 import { HOSTED } from './runtime';
+import { walletFromUrl, walletUrl } from '../shared/navigation';
 const fmt=(n:number,precision=2)=>n.toLocaleString('en-US',{maximumFractionDigits:precision});
 const usd=(n:number)=>`${n<0?'−':''}$${fmt(Math.abs(n))}`;
 const price=(n:number)=>`$${fmt(n,n>=100?2:n>=1?4:n>=.01?6:8)}`;
@@ -50,7 +51,9 @@ function App(){
   const events=useMemo(()=>allEvents.filter(e=>e.coin===coin),[allEvents,coin]);
   const observedPositions=leverageData?.latest?.dexAccounts.flatMap(d=>d.state.assetPositions)??snapshot?.account?.assetPositions??[];
   const markets=[...new Set([...observedPositions.map(p=>p.position.coin),...allEvents.map(e=>e.coin),'BTC'])];
-  async function loadWallet(sync=false,address=wallet){
+  const walletRequest=useRef(0);
+  async function loadWallet(sync=false,address=wallet,fromNavigation=false){
+    const requestId=++walletRequest.current;
     setBusy(true);setError('');setPlaying(false);setReplay(false);
     try{
       let next:Snapshot;
@@ -61,11 +64,22 @@ function App(){
         if(response.status===404)next=await request<Snapshot>(`/api/wallet/${address}/sync`,'POST');
         else {const body=await response.json();if(!response.ok)throw new Error(body.error);next=body;}
       }
+      if(requestId!==walletRequest.current)return;
+      const target=walletUrl(location.href,next.wallet);
+      if(target!==location.pathname+location.search+location.hash)history[fromNavigation?'replaceState':'pushState'](null,'',target);
       setSnapshot(next);setWallet(next.wallet);setWalletEditing(false);const normalized=eventsFrom(next);const available=[...new Set(normalized.map(e=>e.coin))];const counts=new Map<string,number>();for(const e of normalized)if(e.kind==='fill')counts.set(e.coin,(counts.get(e.coin)??0)+1);const selected=[...counts].sort((a,b)=>b[1]-a[1])[0]?.[0]??next.account?.assetPositions[0]?.position.coin??available[0]??'BTC';setCoin(selected);const first=normalized.find(e=>e.coin===selected)?.time;setIntervalValue(suggestedInterval(first?next.fetchedAt-first:30*86400000));setSelectedEvent(undefined);
-    }catch(err){setError(err instanceof Error?err.message:'Could not load wallet');}
-    finally{setBusy(false);}
+    }catch(err){if(requestId===walletRequest.current)setError(err instanceof Error?err.message:'Could not load wallet');}
+    finally{if(requestId===walletRequest.current)setBusy(false);}
   }
-  useEffect(()=>{void loadWallet(false,EXAMPLE_WALLET);},[]);
+  useEffect(()=>{
+    function navigate(){
+      setView(location.hash==='#trade-history'?'history':'explorer');
+      try{const address=walletFromUrl(location.href);setWallet(address);void loadWallet(false,address,true);}
+      catch(error){++walletRequest.current;setBusy(false);setSnapshot(null);setError(error instanceof Error?error.message:'Invalid wallet link');setWallet(new URL(location.href).searchParams.get('wallet')??'');}
+    }
+    navigate();window.addEventListener('popstate',navigate);
+    return()=>window.removeEventListener('popstate',navigate);
+  },[]);
   useEffect(()=>{
     if(!snapshot)return;let disposed=false;setLeverageData(null);setLeverageError('');
     const wallet=snapshot.wallet;

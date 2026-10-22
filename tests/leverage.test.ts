@@ -95,3 +95,21 @@ test('recorded chart metrics are persisted independently of raw JSON payloads',a
  const point=recorder.points(wallet)[0];assert.equal(point.value,f.leverage);assert.equal(point.positionCount,3);
  const row=db.prepare('SELECT leverage,position_count FROM account_frames').get()!;assert.equal(row.leverage,f.leverage);assert.equal(row.position_count,3);db.close();
 });
+
+test('unified accounts count each shared collateral balance once across all DEXs',()=>{
+ const input=frame([dex('','999',[position('BTC','1','50')]),dex('xyz','999',[position('xyz:GOLD','1','25')]),dex('km','123',[position('km:TEST','1','20')],360)]);
+ const result=aggregateFrame({...input,mode:'unifiedAccount',spotBalances:[{coin:'USDC',token:0,total:'100',hold:'60'},{coin:'USDH',token:360,total:'50',hold:'10'},{coin:'UNRELATED',token:555,total:'100000'}]});
+ assert.equal(result.complete,true);assert.equal(result.equity,151);assert.equal(result.notional,95.4);assert.equal(result.leverage,95.4/151);assert.equal(result.positionCount,3);
+});
+test('unified account equity requires shared balances and rejects duplicate collateral rows',()=>{
+ const input=frame([dex('','100',[position('BTC','1','50')])]);
+ assert.equal(aggregateFrame({...input,mode:'unifiedAccount'}).equity,null);
+ assert.equal(aggregateFrame({...input,mode:'unifiedAccount',spotBalances:[{coin:'USDC',token:0,total:'100'},{coin:'USDC',token:0,total:'100'}]}).equity,null);
+});
+test('a valid raw account capture is successful even when its equity mode is unsupported',async()=>{
+ const db=new DatabaseSync(':memory:');const unsupported=frame([dex('','100',[position('BTC','1','50')])],'portfolioMargin');
+ const accounts={capture:async()=>unsupported} as unknown as AccountProvider;
+ const recorder=new AccountRecorder(db,accounts);recorder.register(wallet);await recorder.capture(wallet);
+ assert.equal(recorder.status(wallet).lastSuccess,unsupported.capturedAt);assert.equal(recorder.status(wallet).lastError,null);assert.equal(recorder.status(wallet).samples,1);assert.equal(recorder.latest(wallet)?.complete,false);
+ db.close();
+});

@@ -6,6 +6,7 @@ export interface AccountFrame {
   dexAccounts:DexAccount[]; collateralRates:Record<string,number>;
   equity:number|null; notional:number|null; leverage:number|null;
   positionCount:number; complete:boolean; reasons:string[];
+  spotBalances?:{token:number;coin:string;total:string;hold?:string}[];
 }
 export interface LeveragePoint {
   time:number; value:number|null; equity:number|null; notional:number|null;
@@ -19,9 +20,10 @@ export interface LeverageResponse {
 }
 export function aggregateFrame(input:Omit<AccountFrame,'equity'|'notional'|'leverage'|'positionCount'|'complete'|'reasons'>):AccountFrame {
   let equity=0,notional=0,count=0;const reasons:string[]=[];
-  // Shared-collateral modes need an account-mode-specific equity valuation.
-  // Retain all raw positions, but never sum duplicate shared balances.
-  if(input.mode!=='disabled')reasons.push(`Equity aggregation for account mode ${input.mode} is not supported; raw states are still recorded.`);
+  // Standard balances are per DEX; unified collateral is valued once per token.
+  // Other shared-equity modes retain raw data until their valuation is supported.
+  const unified=input.mode==='unifiedAccount';
+  if(input.mode!=='disabled'&&!unified)reasons.push(`Equity aggregation for account mode ${input.mode} is not supported; raw states are still recorded.`);
   const seen=new Set<string>();
   for(const {dex,collateralToken,state} of input.dexAccounts){
     if(seen.has(dex)){reasons.push(`Duplicate DEX state: ${dex}`);continue;}seen.add(dex);
@@ -29,10 +31,26 @@ export function aggregateFrame(input:Omit<AccountFrame,'equity'|'notional'|'leve
     const e=Number(state.marginSummary.accountValue);
     const active=state.assetPositions.filter(p=>Number(p.position.szi)!==0);
     count+=active.length;
-    if(!Number.isFinite(e)){reasons.push(`Invalid equity for ${dex||'native'}`);continue;}
-    if((e!==0||active.length>0)&&(!Number.isFinite(rate)||rate<=0)){reasons.push(`Missing collateral conversion for token ${collateralToken}`);continue;}
-    equity+=e*(rate||1);
+    if(!unified&&!Number.isFinite(e)){reasons.push(`Invalid equity for ${dex||'native'}`);continue;}
+    if(((!unified&&e!==0)||active.length>0)&&(!Number.isFinite(rate)||rate<=0)){reasons.push(`Missing collateral conversion for token ${collateralToken}`);continue;}
+    if(!unified)equity+=e*(rate||1);
     for(const {position:p} of active){const n=Number(p.positionValue);if(!Number.isFinite(n)){reasons.push(`Missing notional for ${p.coin}`);continue;}notional+=Math.abs(n)*rate;}
+  }
+  if(unified){
+    if(!input.spotBalances)reasons.push('Unified account balances have not been returned.');
+    else{
+      const collateral=new Set(input.dexAccounts.map(d=>d.collateralToken)),seenTokens=new Set<number>();
+      for(const balance of input.spotBalances){
+        if(!collateral.has(balance.token))continue;
+        if(seenTokens.has(balance.token)){reasons.push(`Duplicate collateral balance for token ${balance.token}`);continue;}seenTokens.add(balance.token);
+        const total=Number(balance.total),rate=input.collateralRates[String(balance.token)];
+        if(!Number.isFinite(total)){reasons.push(`Invalid unified balance for ${balance.coin}`);continue;}
+        if(total!==0&&(!Number.isFinite(rate)||rate<=0)){reasons.push(`Missing collateral conversion for token ${balance.token}`);continue;}
+        // Spot totals are the authoritative shared balance, including holds.
+        // Never add per-DEX accountValue or position PnL a second time.
+        equity+=total*(rate||1);
+      }
+    }
   }
   if(!input.dexAccounts.length)reasons.push('No DEX states returned');
   if(equity<=0)reasons.push('Account equity is non-positive');

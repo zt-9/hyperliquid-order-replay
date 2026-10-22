@@ -2,7 +2,7 @@
 
 Explore a wallet’s trades on a chart, replay its activity, and browse its trade history. No wallet connection or keys needed.
 
-[Try it online](https://hyperliquid-wallet-replay.modestbox18.chatgpt.site) — free hosted version; no install required.
+[Try it online](https://hyperliquid-wallet-replay.modestbox18.chatgpt.site/?wallet=0xdae4df7207feb3b350e4284c8efe5f7dac37f637) — free hosted version; no install required.
 
 ![BTC trade replay for wallet 0xdae4df7207feb3b350e4284c8efe5f7dac37f637](docs/preview.gif)
 
@@ -18,7 +18,7 @@ Open **[localhost:3001](http://127.0.0.1:3001/)**. Keep the terminal running; pr
 
 ## Use
 
-1. Click the address in the top-right corner to load a wallet.
+1. Click the address in the top-right corner to load a wallet. Copy the page URL to share that wallet.
 2. Choose a token to see its chart and Buy/Sell markers.
 3. Click **Replay** to follow trades, or click a marker or activity item to inspect it.
 4. Open **Trade history** to browse executed trades and filter by token.

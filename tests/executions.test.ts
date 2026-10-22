@@ -37,3 +37,33 @@ test('offscreen executions never contribute to a visible marker',async()=>{
  const clusters=clusterExecutions(groups,index=>index===0?-100:50,100);
  assert.equal(clusters.length,1);assert.equal(clusters[0].side,'A');
 });
+
+test('a single badge is centered on its candle, not a screen bucket or edge clamp',async()=>{
+ const {clusterExecutions}=await import('../shared/executions.js');
+ const groups=executionGroups(candles,[fill(101,'B','1','10')],60);
+ for(const x of [2,17,31,47,98])assert.equal(clusterExecutions(groups,()=>x,100)[0].x,x);
+});
+test('crowded fills anchor to the latest real execution candle and track pan exactly',async()=>{
+ const {clusterExecutions}=await import('../shared/executions.js');
+ const groups=executionGroups(candles,[fill(101,'B','1','10'),fill(165,'B','1','13')],60);
+ for(const offset of [0,3,17,31]){
+  const cluster=clusterExecutions(groups,i=>20+i*4+offset,300)[0];
+  assert.equal(cluster.x,24+offset);assert.equal(cluster.index,1);assert.equal(cluster.firstIndex,0);assert.equal(cluster.lastIndex,1);
+ }
+});
+test('execution candle mapping rejects gaps and accepts exact next-candle boundaries',async()=>{
+ const {executionCandleIndex}=await import('../shared/executions.js');
+ const gapped=[candles[0],candles[2]];
+ assert.equal(executionCandleIndex(gapped,fill(160,'B','1','10'),60),-1);
+ assert.equal(executionCandleIndex(gapped,fill(220,'B','1','10'),60),1);
+ assert.equal(executionCandleIndex(gapped,fill(280,'B','1','10'),60),-1);
+});
+test('merged badges use one real candle wick, and selection anchors to its own fill candle',async()=>{
+ const {clusterExecutions,executionMarkerAnchor}=await import('../shared/executions.js');
+ const varied=[{...candles[0],low:3,high:30},{...candles[1],low:7,high:19}];
+ const first=fill(101,'B','1','10'),last=fill(165,'B','1','13');
+ const cluster=clusterExecutions(executionGroups(varied,[first,last],60),i=>20+i*4,300)[0];
+ assert.deepEqual(executionMarkerAnchor(cluster,varied),{index:1,price:7});
+ assert.deepEqual(executionMarkerAnchor(cluster,varied,first),{index:0,price:3});
+ assert.deepEqual(executionMarkerAnchor(cluster,varied,{...first,kind:'placement'}),{index:1,price:7});
+});

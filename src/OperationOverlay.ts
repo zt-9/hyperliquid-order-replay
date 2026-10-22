@@ -1,5 +1,5 @@
 import type { ISeriesPrimitive, IPrimitivePaneView, IPrimitivePaneRenderer, SeriesAttachedParameter, Logical } from 'lightweight-charts';
-import { executionGroups, clusterExecutions, type ScreenExecutionCluster } from '../shared/executions';
+import { executionGroups, clusterExecutions, executionCandleIndex, executionMarkerAnchor, type ScreenExecutionCluster } from '../shared/executions';
 import type { Candle } from '../shared/market';
 import { candleIndexAt, interpolateLogical } from '../shared/market';
 import type { ReplayEvent } from '../shared/replay';
@@ -52,37 +52,38 @@ export class OperationOverlay implements ISeriesPrimitive {
       }
       this.markers=[];
       let selectionShown=false;
-      const selectedIndex=this.selectedEvent?candleIndexAt(this.candles,this.selectedEvent.time/1000):-1;
+      const selectedIndex=this.selectedEvent?executionCandleIndex(this.candles,this.selectedEvent,this.barSeconds):-1;
       if(this.options.fills){
         const groups=executionGroups(this.candles,visible.filter(permitted),this.barSeconds);
         const clusters=clusterExecutions(groups,index=>scale.logicalToCoordinate(index as Logical),mediaSize.width);
         for(const cluster of clusters){
           const buy=cluster.side==='B';
-          const bars=this.candles.slice(cluster.firstIndex,cluster.lastIndex+1);
-          const anchorPrice=buy?Math.min(...bars.map(c=>c.low)):Math.max(...bars.map(c=>c.high));
-          const anchor=series.priceToCoordinate(anchorPrice);
+          const selected=this.selectedEvent?.kind==='fill'&&cluster.events.some(e=>e.id===this.selectedEvent?.id);
+          const anchorInfo=executionMarkerAnchor(cluster,this.candles,this.selectedEvent);if(!anchorInfo)continue;
+          const anchorIndex=anchorInfo.index;
+          const px=scale.logicalToCoordinate(anchorIndex as Logical);if(px===null||px<0||px>mediaSize.width)continue;
+          const anchor=series.priceToCoordinate(anchorInfo.price);
           if(anchor===null||anchor<0||anchor>mediaSize.height)continue;
-          const py=Math.max(12,Math.min(mediaSize.height-12,anchor+(buy?17:-17)));
-          const selected=!!this.selectedEvent&&cluster.side===this.selectedEvent.side&&(cluster.events.some(e=>e.id===this.selectedEvent?.id)||(this.selectedEvent.kind!=='fill'&&selectedIndex>=cluster.firstIndex&&selectedIndex<=cluster.lastIndex));
+          const py=anchor+(buy?17:-17);
           if(selected)selectionShown=true;
           const highlighted=this.highlightedId===cluster.id||selected;
           ctx.globalAlpha=highlighted?1:.9;
           ctx.strokeStyle=buy?'#39cea4':'#f2798c';ctx.lineWidth=highlighted?1.8:1;
-          ctx.beginPath();ctx.moveTo(cluster.x,anchor+(buy?2:-2));ctx.lineTo(cluster.x,py+(buy?-9:9));ctx.stroke();
-          ctx.fillStyle=buy?(selected?'#226a54':'#123c33'):(selected?'#7d3549':'#4b2530');ctx.beginPath();ctx.roundRect(cluster.x-9,py-9,18,18,4);ctx.fill();ctx.stroke();
-          if(selected){ctx.save();ctx.globalAlpha=1;ctx.strokeStyle='#ffe173';ctx.shadowColor='#ffd447';ctx.shadowBlur=9;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(cluster.x-12,py-12,24,24,6);ctx.stroke();ctx.restore();}
+          ctx.beginPath();ctx.moveTo(px,anchor+(buy?2:-2));ctx.lineTo(px,py+(buy?-9:9));ctx.stroke();
+          ctx.fillStyle=buy?(selected?'#226a54':'#123c33'):(selected?'#7d3549':'#4b2530');ctx.beginPath();ctx.roundRect(px-9,py-9,18,18,4);ctx.fill();ctx.stroke();
+          if(selected){ctx.save();ctx.globalAlpha=1;ctx.strokeStyle='#ffe173';ctx.shadowColor='#ffd447';ctx.shadowBlur=9;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(px-12,py-12,24,24,6);ctx.stroke();ctx.restore();}
           ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-          ctx.fillStyle=buy?'#74e8c5':'#ffa8b6';ctx.fillText(buy?'B':'S',cluster.x,py+.5);
+          ctx.fillStyle=buy?'#74e8c5':'#ffa8b6';ctx.fillText(buy?'B':'S',px,py+.5);
 
-          this.markers.push({id:cluster.id,x:cluster.x,y:py,cluster});
+          this.markers.push({id:cluster.id,x:px,y:py,cluster});
         }
       }
       const selected=this.selectedEvent;
-      if(selected&&!selectionShown&&selectedIndex>=0&&selected.time/1000<=this.cutoff){
+      if(selected?.kind==='fill'&&!selectionShown&&selectedIndex>=0&&selected.time/1000<=this.cutoff){
         const bar=this.candles[selectedIndex],px=scale.logicalToCoordinate(selectedIndex as Logical),buy=selected.side==='B';
         const anchor=series.priceToCoordinate(buy?bar.low:bar.high);
         if(px!==null&&anchor!==null&&px>=0&&px<=mediaSize.width){
-          const py=Math.max(14,Math.min(mediaSize.height-14,anchor+(buy?17:-17)));
+          const py=anchor+(buy?17:-17);
           ctx.globalAlpha=1;ctx.strokeStyle=buy?'#62e8bf':'#ffa4b6';ctx.fillStyle=buy?'#226a54':'#7d3549';ctx.lineWidth=2;
           ctx.beginPath();ctx.roundRect(px-10,py-10,20,20,4);ctx.fill();ctx.stroke();ctx.save();ctx.strokeStyle='#ffe173';ctx.shadowColor='#ffd447';ctx.shadowBlur=9;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(px-13,py-13,26,26,6);ctx.stroke();ctx.restore();
           ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=buy?'#b8ffe5':'#ffd4dd';ctx.fillText(buy?'B':'S',px,py+.5);

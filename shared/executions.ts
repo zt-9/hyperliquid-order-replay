@@ -8,8 +8,8 @@ export function executionGroups(candles:Candle[],events:ReplayEvent[],barSeconds
   const groups=new Map<string,ExecutionGroup>();
   for(const event of events){
     if(event.kind!=='fill')continue;
-    const index=candleIndexAt(candles,event.time/1000);
-    if(index<0||event.time/1000>=candles[index].time+barSeconds)continue;
+    const index=executionCandleIndex(candles,event,barSeconds);
+    if(index<0)continue;
     const key=`${index}:${event.side}`;
     const group=groups.get(key)??{index,side:event.side,size:0,notional:0,price:0,count:0,events:[]};
     group.size+=Number(event.size);group.notional+=Number(event.size)*Number(event.price);group.count++;group.events.push(event);group.price=group.notional/group.size;groups.set(key,group);
@@ -20,17 +20,36 @@ export function tradeBars(groups:ExecutionGroup[]){return [...new Set(groups.map
 export function nextTradeBar(bars:number[],cursor:number,direction:1|-1){return direction===1?bars.find(i=>i>cursor):bars.findLast(i=>i<cursor);}
 
 export interface ScreenExecutionCluster extends ExecutionGroup { id:string; x:number; firstIndex:number; lastIndex:number }
-// Cluster in screen space so zooming in separates fills without losing records.
-// Buy and sell groups stay separate; the badge is a summary, not an exact fill.
-export function clusterExecutions(groups:ExecutionGroup[],xAt:(index:number)=>number|null,width:number,gap=32):ScreenExecutionCluster[]{
- const buckets=new Map<string,ScreenExecutionCluster>();
- for(const group of groups){
+// Merge crowded summaries, but always anchor the badge to a real candle.
+// The latest execution candle represents a merged group; never use an arbitrary
+// pixel bucket center or clamp the marker away from its candle at the pane edge.
+export function clusterExecutions(groups:ExecutionGroup[],xAt:(index:number)=>number|null,width:number,gap=26):ScreenExecutionCluster[]{
+ const clusters:ScreenExecutionCluster[]=[];
+ const lastBySide=new Map<'A'|'B',{cluster:ScreenExecutionCluster;firstX:number}>();
+ for(const group of [...groups].sort((a,b)=>a.index-b.index)){
   const px=xAt(group.index);if(px===null||px<0||px>width)continue;
-  const bucket=Math.floor(px/gap),key=`${group.side}:${bucket}`;
-  const cluster=buckets.get(key)??{...group,id:key,x:Math.min(width-11,Math.max(11,(bucket+.5)*gap)),size:0,notional:0,price:0,count:0,events:[],firstIndex:group.index,lastIndex:group.index};
-  cluster.size+=group.size;cluster.notional+=group.notional;cluster.count+=group.count;
-  cluster.events.push(...group.events);cluster.price=cluster.notional/cluster.size;
-  cluster.lastIndex=group.index;cluster.index=group.index;buckets.set(key,cluster);
+  const prior=lastBySide.get(group.side);
+  if(prior&&px-prior.firstX<gap){
+   const c=prior.cluster;c.size+=group.size;c.notional+=group.notional;c.count+=group.count;c.events.push(...group.events);
+   c.price=c.notional/c.size;c.lastIndex=group.index;c.index=group.index;c.x=px;
+  }else{
+   const cluster:ScreenExecutionCluster={...group,id:`execution:${group.side}:${group.events[0].id}`,events:[...group.events],x:px,firstIndex:group.index,lastIndex:group.index};
+   clusters.push(cluster);lastBySide.set(group.side,{cluster,firstX:px});
+  }
  }
- return [...buckets.values()];
+ return clusters;
+}
+
+// A fill is in [candle open, candle open + interval), never a gap or next bar.
+export function executionCandleIndex(candles:Candle[],event:ReplayEvent,barSeconds:number){
+ const index=candleIndexAt(candles,event.time/1000);
+ return index>=0&&event.time/1000<candles[index].time+barSeconds?index:-1;
+}
+
+// Anchor to the wick of the representative candle, or the selected fill's candle.
+export function executionMarkerAnchor(cluster:ScreenExecutionCluster,candles:Candle[],selected?:ReplayEvent|null){
+ const selectedFill=selected?.kind==='fill'&&cluster.events.some(e=>e.id===selected.id);
+ const index=selectedFill?candleIndexAt(candles,selected.time/1000):cluster.index;
+ const candle=candles[index];
+ return candle?{index,price:cluster.side==='B'?candle.low:candle.high}:null;
 }

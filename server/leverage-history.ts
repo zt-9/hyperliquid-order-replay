@@ -19,6 +19,11 @@ export class LeverageHistory {
     const accounts=this.recorder.accounts;
     const frame=await this.recorder.capture(wallet);
     const warnings=[...frame.reasons];
+    if(frame.mode!=='disabled'){
+      warnings.push('Historical leverage estimates for shared-collateral modes are unavailable; current shared balances and recorded snapshots remain available.');
+      this.db.prepare('INSERT INTO leverage_backfills(wallet,built_at,payload) VALUES(?,?,?) ON CONFLICT(wallet) DO UPDATE SET built_at=excluded.built_at,payload=excluded.payload').run(wallet,Date.now(),JSON.stringify({points:[],warnings}));
+      this.jobs.set(wallet,{status:'ready',progress:'Recording current shared account balances; historical estimates unavailable'});return;
+    }
     this.jobs.set(wallet,{status:'building',progress:'Fetching bounded fill history across all markets'});
     const fills=await accounts.fills(wallet,frame.startedAt);
     const portfolio=await accounts.api.info<[string,{accountValueHistory:[number,string][]}][]>('portfolio',wallet);
