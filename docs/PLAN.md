@@ -37,13 +37,13 @@ Same-millisecond fill ordering now preserves source chronology: trade IDs cannot
 
 ### 2b. Wallet leverage observatory and account recorder — implemented
 
-Added a separate wallet-wide effective-leverage chart. All perpetual DEXs are discovered and queried; the example exposes 43 positions across native and builder DEXs rather than only the 37 native positions. Numerators sum absolute notionals. Recorded equity uses non-duplicated standard-mode DEX balances with collateral conversion. Shared-equity account modes are retained raw but ratios are withheld pending mode-aware valuation.
+Added wallet-wide effective-leverage calculations and account-state recording. The separate leverage chart was subsequently removed from the UI to keep the execution chart central. All perpetual DEXs are discovered and queried; the example exposes 43 positions across native and builder DEXs rather than only the 37 native positions. Numerators sum absolute notionals. Recorded equity uses non-duplicated standard-mode DEX balances with collateral conversion. Shared-equity account modes are retained raw but ratios are withheld pending mode-aware valuation.
 
-SQLite stores raw account frames approximately every 30 seconds in a worker independent of browser visits, with a durable watch list, error observations and pause/resume. Watchers resume after service restarts. Missing or delayed recording creates explicit chart gaps.
+SQLite stores raw account frames approximately every 30 seconds in a worker independent of browser visits, with a durable watch list, error observations and pause/resume. Watchers resume after service restarts. Missing or delayed recording creates explicit data gaps.
 
-Backfill uses up to 10,000 timestamp-overlapped fills with a fixed cutoff, all relevant markets (including unchanged and closed positions), completed 5-minute market prices and bounded interpolation of historical perpetual equity samples. Missing any position price or valid equity, unsupported historical collateral conversion, or fill continuity gaps withhold affected points. Current portfolio-equity alignment is checked before building estimates. The chart distinguishes estimates from observations and follows replay cutoff without filtering to the selected market.
+Backfill uses up to 10,000 timestamp-overlapped fills with a fixed cutoff, all relevant markets (including unchanged and closed positions), completed 5-minute market prices and bounded interpolation of historical perpetual equity samples. Missing any position price or valid equity, unsupported historical collateral conversion, or fill continuity gaps withhold affected points. Current portfolio-equity alignment is checked before building estimates. The API distinguishes estimates from observations; the cursor readout respects time bounds without filtering wallet exposure to the selected market.
 
-The UI now separates Wallet Overview, market selection and market details. Token names appear in the market heading instead of every metric; Resting Orders and Operations are renamed Open Orders and Activity. The original H↗ REPLAY logo remains.
+The compact UI separates wallet summary, market selection and market details. Per-token reported leverage appears on market tabs, in the selected market heading, and in an expandable all-positions table. Token names appear in the market heading instead of every metric; Resting Orders and Operations are renamed Open Orders and Activity. The original H↗ REPLAY logo remains.
 
 ### 2c. Extend observed history — next
 
