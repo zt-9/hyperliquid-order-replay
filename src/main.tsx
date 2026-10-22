@@ -18,7 +18,10 @@ function App(){
   const [leverageData,setLeverageData]=useState<LeverageResponse|null>(null);
   const [leverageError,setLeverageError]=useState('');
   const [wallet,setWallet]=useState(EXAMPLE_WALLET);
+  const [copyStatus,setCopyStatus]=useState('');
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
+  useEffect(()=>{setCopyStatus('');},[snapshot?.wallet]);
+  async function copyAddress(){if(!snapshot)return;try{await navigator.clipboard.writeText(snapshot.wallet);setCopyStatus('Copied');}catch{setCopyStatus('Copy failed — select the address to copy');}}
   const [coin,setCoin]=useState('BTC');
   const [interval,setIntervalValue]=useState<Interval>('4h');
   const [candles,setCandles]=useState<Candle[]>([]);
@@ -126,7 +129,7 @@ function App(){
   function seek(event:ReplayEvent){const at=candleIndexAt(candles,event.time/1000);if(at>=0){setCursor(at);setPlaying(false);setSelectedEvent(event);}}
   return <main className="terminal">
     <header className="topbar"><a href="/" className="brand"><span className="original-mark">H<span>↗</span></span><b className="original-wordmark">REPLAY</b></a><div className="top-nav"><span className="nav-active">Wallet explorer</span><span className="nav-context">Read-only research</span></div><span className="local-badge"><i/> Local workspace</span></header>
-    <section className="walletbar"><div className="wallet-title"><span className="avatar">0x</span><div><h1>{snapshot?.wallet===EXAMPLE_WALLET?'Example wallet':'Wallet explorer'}</h1><span className="address-label">{snapshot?.wallet??'Load a wallet to explore its trading history'}</span></div></div><form onSubmit={e=>{e.preventDefault();void loadWallet(false);}}><input aria-label="Wallet address" value={wallet} onChange={e=>setWallet(e.target.value)} spellCheck={false}/><button disabled={busy||!/^0x[0-9a-fA-F]{40}$/.test(wallet)}>{busy?'Loading…':'Load wallet'}</button><button type="button" className="button-icon" title="Fetch latest wallet history" aria-label="Sync wallet" disabled={busy||!snapshot} onClick={()=>void loadWallet(true,snapshot!.wallet)}>↻</button></form></section>
+    <section className="walletbar"><div className="wallet-title wallet-identity"><div><span className="wallet-identity-label">WALLET</span><div className="wallet-address-row"><h1>{snapshot?.wallet??'Load a wallet'}</h1><button type="button" className="copy-address" aria-label="Copy wallet address" disabled={!snapshot} onClick={()=>void copyAddress()}>{copyStatus==='Copied'?'Copied!':'Copy'}</button></div><span className="copy-feedback" role="status">{copyStatus!=='Copied'?copyStatus:''}</span></div></div><form onSubmit={e=>{e.preventDefault();void loadWallet(false);}}><input aria-label="Wallet address" value={wallet} onChange={e=>setWallet(e.target.value)} spellCheck={false}/><button disabled={busy||!/^0x[0-9a-fA-F]{40}$/.test(wallet)}>{busy?'Loading…':'Load wallet'}</button><button type="button" className="button-icon" title="Fetch latest wallet history" aria-label="Sync wallet" disabled={busy||!snapshot} onClick={()=>void loadWallet(true,snapshot!.wallet)}>↻</button></form></section>
     {error&&<div className="error-banner" role="alert">{error}</div>}
     {leverageError&&<div className="error-banner" role="alert">{leverageError}</div>}
     <WalletLeverage data={leverageData} onRecording={()=>void toggleRecording()} onSelect={selectMarket}/>
