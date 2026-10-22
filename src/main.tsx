@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { eventsFrom, stateAt, type Snapshot, type ReplayEvent } from '../shared/replay';
 import { EXAMPLE_WALLET, INTERVALS, candleIndexAt, type Candle, type Interval } from '../shared/market';
+import { executionGroups, tradeBars, nextTradeBar } from '../shared/executions';
 import { MarketChart } from './MarketChart';
 import type { OverlayOptions } from './OperationOverlay';
 import './style.css';
@@ -20,15 +21,16 @@ function App(){
   const [cursor,setCursor]=useState(0);
   const [replay,setReplay]=useState(false);
   const [playing,setPlaying]=useState(false);
-  const [speed,setSpeed]=useState(4);
+  const [speed,setSpeed]=useState(1);
+  const [replayMode,setReplayMode]=useState<'trades'|'candles'>('trades');
   const [busy,setBusy]=useState(false);
   const [chartBusy,setChartBusy]=useState(false);
   const [error,setError]=useState('');
   const [chartError,setChartError]=useState('');
   const [retry,setRetry]=useState(0);
   const [chartType,setChartType]=useState<'candles'|'line'>('candles');
-  const [options,setOptions]=useState<OverlayOptions>({fills:true,orders:true,labels:false,buys:true,sells:true,currentOnly:false});
-  const [tab,setTab]=useState<'orders'|'events'>('orders');
+  const [options,setOptions]=useState<OverlayOptions>({fills:true,orders:true,labels:true,buys:true,sells:true,currentOnly:false});
+  const [tab,setTab]=useState<'orders'|'events'>('events');
   const [selectedEvent,setSelectedEvent]=useState<ReplayEvent>();
   const [resetKey,setResetKey]=useState(0);
   const allEvents=useMemo(()=>snapshot?eventsFrom(snapshot):[],[snapshot]);
@@ -44,7 +46,7 @@ function App(){
         if(response.status===404)next=await request<Snapshot>(`/api/wallet/${address}/sync`,'POST');
         else {const body=await response.json();if(!response.ok)throw new Error(body.error);next=body;}
       }
-      setSnapshot(next);const normalized=eventsFrom(next);const available=[...new Set(normalized.map(e=>e.coin))];const selected=available.includes('BTC')?'BTC':next.account?.assetPositions[0]?.position.coin??available[0]??'BTC';setCoin(selected);const first=normalized.find(e=>e.coin===selected)?.time;setIntervalValue(suggestedInterval(first?next.fetchedAt-first:30*86400000));setSelectedEvent(undefined);
+      setSnapshot(next);const normalized=eventsFrom(next);const available=[...new Set(normalized.map(e=>e.coin))];const counts=new Map<string,number>();for(const e of normalized)if(e.kind==='fill')counts.set(e.coin,(counts.get(e.coin)??0)+1);const selected=[...counts].sort((a,b)=>b[1]-a[1])[0]?.[0]??next.account?.assetPositions[0]?.position.coin??available[0]??'BTC';setCoin(selected);const first=normalized.find(e=>e.coin===selected)?.time;setIntervalValue(suggestedInterval(first?next.fetchedAt-first:30*86400000));setSelectedEvent(undefined);
     }catch(err){setError(err instanceof Error?err.message:'Could not load wallet');}
     finally{setBusy(false);}
   }
@@ -64,20 +66,22 @@ function App(){
     }).catch(err=>{if(!controller.signal.aborted)setChartError(err.message);}).finally(()=>{if(!controller.signal.aborted)setChartBusy(false);});
     return()=>controller.abort();
   },[snapshot,coin,interval,retry]);
-  const replayStart=useMemo(()=>{const first=events.find(e=>candles.length&&e.time>=candles[0].time*1000);return Math.max(0,candleIndexAt(candles,first?first.time/1000:candles[0]?.time??0)-5);},[events,candles]);
+  const groups=useMemo(()=>executionGroups(candles,events,INTERVALS[interval]),[candles,events,interval]);
+  const bars=useMemo(()=>tradeBars(groups),[groups]);
+  const replayStart=Math.max(0,(bars[0]??0)-1);
   useEffect(()=>{
     if(!playing)return;
-    const timer=window.setInterval(()=>setCursor(value=>{if(value>=candles.length-1){setPlaying(false);return value;}return value+1;}),1000/speed);
+    const timer=window.setInterval(()=>setCursor(value=>{const next=replayMode==='trades'?nextTradeBar(bars,value,1):value<candles.length-1?value+1:undefined;if(next===undefined){setPlaying(false);return value;}return next;}),1000/speed);
     return()=>window.clearInterval(timer);
-  },[playing,speed,candles.length]);
+  },[playing,speed,candles.length,bars,replayMode]);
   useEffect(()=>{
     function key(event:KeyboardEvent){if(event.target instanceof HTMLInputElement||event.target instanceof HTMLSelectElement||event.target instanceof HTMLTextAreaElement)return;
-      if(event.code==='Space'){event.preventDefault();if(candles.length){if(!replay){setReplay(true);if(cursor>=candles.length-1)setCursor(replayStart);}setPlaying(p=>!p);}}
-      if(event.code==='ArrowRight'&&replay){event.preventDefault();setPlaying(false);setCursor(i=>Math.min(candles.length-1,i+1));}
-      if(event.code==='ArrowLeft'&&replay){event.preventDefault();setPlaying(false);setCursor(i=>Math.max(0,i-1));}
+      if(event.code==='Space'){event.preventDefault();if(candles.length){if(!replay){setReplay(true);if(cursor>=candles.length-1||replayMode==='trades'&&nextTradeBar(bars,cursor,1)===undefined)setCursor(replayStart);}setPlaying(p=>!p);}}
+      if(event.code==='ArrowRight'&&replay){event.preventDefault();setPlaying(false);setCursor(i=>replayMode==='trades'?nextTradeBar(bars,i,1)??i:Math.min(candles.length-1,i+1));}
+      if(event.code==='ArrowLeft'&&replay){event.preventDefault();setPlaying(false);setCursor(i=>replayMode==='trades'?nextTradeBar(bars,i,-1)??i:Math.max(0,i-1));}
     }
     window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
-  },[replay,candles.length,cursor,replayStart]);
+  },[replay,candles.length,cursor,replayStart,bars,replayMode]);
   const step=INTERVALS[interval];
   const cutoff=candles.length?Math.min(snapshot?.fetchedAt??Infinity,((candles[cursor+1]?.time??candles[cursor]?.time+step)*1000)-1):0;
   const index=events.findLastIndex(e=>e.time<=cutoff);
@@ -87,12 +91,16 @@ function App(){
   const pnl=fills.reduce((sum,e)=>sum+Number(e.fill!.closedPnl),0);
   const marketEvents=events.filter(e=>candles.length&&e.time>=candles[0].time*1000&&e.time<(candles.at(-1)!.time+step)*1000);
   const renderedEvents=marketEvents.filter(e=>!replay||e.time<=cutoff);
+  const revealedGroups=groups.filter(g=>!replay||g.index<=cursor);
+  const focusGroups=replay?revealedGroups.filter(g=>g.index===cursor):revealedGroups.filter(g=>g.index===revealedGroups.at(-1)?.index);
+  const buyCount=marketEvents.filter(e=>e.kind==='fill'&&e.side==='B').length;
+  const sellCount=marketEvents.filter(e=>e.kind==='fill'&&e.side==='A').length;
   const current=snapshot?.account?.assetPositions.find(p=>p.position.coin===coin)?.position;
   const accountValue=snapshot?.account?Number(snapshot.account.marginSummary.accountValue):null;
   const isSpot=coin.startsWith('@')||coin.includes('/');
   const toggle=(key:keyof OverlayOptions)=>setOptions(o=>({...o,[key]:!o[key]}));
   function selectMarket(market:string){setCoin(market);setSelectedEvent(undefined);const first=allEvents.find(e=>e.coin===market)?.time;setIntervalValue(suggestedInterval(first&&snapshot?snapshot.fetchedAt-first:30*86400000));}
-  function startReplay(){if(!candles.length)return;setReplay(true);setPlaying(true);if(cursor>=candles.length-1)setCursor(replayStart);}
+  function startReplay(){if(!candles.length)return;setReplay(true);setPlaying(true);setTab('events');if(cursor>=candles.length-1||replayMode==='trades'&&nextTradeBar(bars,cursor,1)===undefined)setCursor(replayStart);}
   function latest(){setReplay(false);setPlaying(false);setCursor(Math.max(0,candles.length-1));setSelectedEvent(undefined);setResetKey(k=>k+1);}
   function seek(event:ReplayEvent){const at=candleIndexAt(candles,event.time/1000);if(at>=0){setCursor(at);setPlaying(false);setSelectedEvent(event);}}
   return <main className="terminal">
@@ -104,9 +112,10 @@ function App(){
     <section className="workspace">
       <div className="chart-column">
         <div className="chart-toolbar"><label className="market-select"><select aria-label="Market" value={coin} onChange={e=>selectMarket(e.target.value)}>{markets.map(m=><option key={m}>{m}</option>)}</select><span>/ USDC</span></label><div className="intervals">{(Object.keys(INTERVALS) as Interval[]).map(item=><button key={item} className={item===interval?'active':''} onClick={()=>setIntervalValue(item)}>{item}</button>)}</div><div className="toolbar-spacer"/><select aria-label="Chart type" value={chartType} onChange={e=>setChartType(e.target.value as 'candles'|'line')}><option value="candles">Candles</option><option value="line">Line</option></select><button className={replay?'replay-button active':'replay-button'} disabled={!candles.length||chartBusy} onClick={startReplay}>◀◀ Replay</button><button onClick={latest} disabled={!candles.length}>⇥ Latest</button></div>
-        <div className="overlay-toolbar"><span className="toolbar-label">OVERLAYS</span>{(['fills','orders','labels'] as const).map(key=><label key={key}><input type="checkbox" checked={options[key]} onChange={()=>toggle(key)}/>{key==='fills'?'Executions':key==='orders'?'Order lifetimes':'Trade sizes'}</label>)}<span className="divider"/>{(['buys','sells'] as const).map(key=><label className={key==='buys'?'positive':'negative'} key={key}><input type="checkbox" checked={options[key]} onChange={()=>toggle(key)}/>{key==='buys'?'Buy':'Sell'}</label>)}<label><input type="checkbox" checked={options.currentOnly} onChange={()=>toggle('currentOnly')}/>Resting only</label><span className="legend-info" title="Circles are API fill records. Dashed lines are estimated order lifetimes from order timestamps and latest fields.">ⓘ Legend</span></div>
+        <div className="overlay-toolbar"><span className="toolbar-label">OVERLAYS</span>{(['fills','orders','labels'] as const).map(key=><label key={key}><input type="checkbox" checked={options[key]} onChange={()=>toggle(key)}/>{key==='fills'?'Executions':key==='orders'?'Order lifetimes':'Trade labels'}</label>)}<span className="execution-counts"><b className="positive">{buyCount} buys</b><b className="negative">{sellCount} sells</b></span><span className="divider"/>{(['buys','sells'] as const).map(key=><label className={key==='buys'?'positive':'negative'} key={key}><input type="checkbox" checked={options[key]} onChange={()=>toggle(key)}/>{key==='buys'?'Buy':'Sell'}</label>)}<label><input type="checkbox" checked={options.currentOnly} onChange={()=>toggle('currentOnly')}/>Resting only</label><span className="legend-info" title="Circles are API fill records. Dashed lines are estimated order lifetimes from order timestamps and latest fields.">ⓘ Legend</span></div>
+        <div className="trade-focus" aria-live="polite"><div className="trade-focus-title">{replay?'TRADES AT REPLAY CURSOR':'LATEST EXECUTED TRADES'}<small>{replay?'One step per candle containing executions':'Actual fills · grouped by candle and side'}</small></div>{focusGroups.length?focusGroups.map(g=><button key={`${g.index}:${g.side}`} className={`trade-card ${g.side==='B'?'trade-buy':'trade-sell'}`} onClick={()=>{seek(g.events.at(-1)!);setTab('events');}}><b>{g.side==='B'?'▲ BUY':'▼ SELL'} {fmt(g.size,5)} {coin}</b><span>Avg {price(g.price)} · {g.count} fill{g.count===1?'':'s'}</span><small>{date(candles[g.index].time)} UTC</small></button>):<span className="no-execution">{replay?'No executions in this candle. The next trade step jumps to the next execution.':'No executions for this market in the fetched history.'}</span>}</div>
         <div className="chart-container"><MarketChart coin={coin} barSeconds={step} candles={candles} events={events} cursor={cursor} replay={replay} options={options} chartType={chartType} resetKey={`${resetKey}:${coin}:${interval}`} onSelect={i=>{setCursor(i);setPlaying(false);setSelectedEvent(undefined);}}/>{(chartBusy||busy)&&<div className="chart-loading"><span className="spinner"/>Loading {busy?'wallet history':'market candles'}…</div>}{chartError&&<div className="chart-loading"><p>{chartError}</p><button onClick={()=>setRetry(r=>r+1)}>Retry candles</button></div>}</div>
-        <div className={`replay-strip ${replay?'is-replay':''}`}><span className="mode-pill">{replay?'REPLAY':'HISTORICAL VIEW'}</span>{replay?<><button aria-label="Previous candle" onClick={()=>{setPlaying(false);setCursor(i=>Math.max(0,i-1));}}>◁</button><button className="play-button" onClick={()=>{if(cursor===candles.length-1)setCursor(replayStart);setPlaying(p=>!p);}}>{playing?'Ⅱ Pause':'▶ Play'}</button><button aria-label="Next candle" onClick={()=>{setPlaying(false);setCursor(i=>Math.min(candles.length-1,i+1));}}>▷</button><select aria-label="Playback speed" value={speed} onChange={e=>setSpeed(Number(e.target.value))}>{[1,4,12,30].map(s=><option key={s} value={s}>{s} bars/s</option>)}</select><input aria-label="Replay timeline" type="range" min={0} max={Math.max(0,candles.length-1)} value={Math.min(cursor,Math.max(0,candles.length-1))} onChange={e=>{setPlaying(false);setCursor(Number(e.target.value));}}/><button onClick={latest}>Exit replay</button></>:<span className="replay-hint">Scroll to zoom · drag to pan · click a candle to inspect · Replay to advance through time</span>}<time>{candles[cursor]?`${date(candles[cursor].time)} UTC`:'—'}</time></div>
+        <div className={`replay-strip ${replay?'is-replay':''}`}><span className="mode-pill">{replay?'REPLAY':'HISTORICAL VIEW'}</span>{replay?<><button aria-label="Previous trade or candle" onClick={()=>{setPlaying(false);setCursor(i=>replayMode==='trades'?nextTradeBar(bars,i,-1)??i:Math.max(0,i-1));}}>◁</button><button className="play-button" onClick={()=>{if(cursor===candles.length-1||replayMode==='trades'&&nextTradeBar(bars,cursor,1)===undefined)setCursor(replayStart);setPlaying(p=>!p);}}>{playing?'Ⅱ Pause':'▶ Play'}</button><button aria-label="Next trade or candle" onClick={()=>{setPlaying(false);setCursor(i=>replayMode==='trades'?nextTradeBar(bars,i,1)??i:Math.min(candles.length-1,i+1));}}>▷</button><select aria-label="Replay mode" value={replayMode} onChange={e=>{setPlaying(false);setReplayMode(e.target.value as 'trades'|'candles');}}><option value="trades">Trade replay</option><option value="candles">Candle replay</option></select><select aria-label="Playback speed" value={speed} onChange={e=>setSpeed(Number(e.target.value))}>{[1,4,12,30].map(s=><option key={s} value={s}>{s} steps/s</option>)}</select><input aria-label="Replay timeline" type="range" min={0} max={Math.max(0,candles.length-1)} value={Math.min(cursor,Math.max(0,candles.length-1))} onChange={e=>{setPlaying(false);setCursor(Number(e.target.value));}}/><button onClick={latest}>Exit replay</button></>:<span className="replay-hint">Scroll to zoom · drag to pan · click a candle to inspect · Replay to follow executed trades</span>}<time>{candles[cursor]?`${date(candles[cursor].time)} UTC`:'—'}</time></div>
         <div className="coverage-strip"><span className="status-dot"/><span>{candles.length?`${candles.length.toLocaleString()} candles · ${date(candles[0].time).slice(0,10)} — ${date(candles.at(-1)!.time).slice(0,10)}`:'Waiting for market data'}</span><span>{marketEvents.filter(e=>e.kind==='fill').length} fills in chart window</span>{events.length>marketEvents.length&&<span className="amber">{events.length-marketEvents.length} operations outside candle coverage</span>}<a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a></div>
       </div>
       <aside className="inspector"><div className="inspector-heading"><h2>State at selected time</h2><span className={replay?'replay-dot':'pinned-dot'}>{replay?'REPLAY':'PINNED'}</span></div><div className="selected-date">{candles[cursor]?date(candles[cursor].time):'—'} <small>UTC · {candles[cursor]&&snapshot&&(candles[cursor].time+step)*1000>snapshot.fetchedAt?'forming candle':'candle close'}</small></div><dl><dt>{coin} close</dt><dd>{candles[cursor]?price(candles[cursor].close):'—'}</dd><dt>Observed position</dt><dd className={state.position!==null&&state.position<0?'negative':'positive'}>{state.position===null||isSpot?'Unknown':`${fmt(state.position,5)} ${coin}`}</dd><dt>Position notional</dt><dd>{state.position!==null&&!isSpot&&candles[cursor]?usd(Math.abs(state.position*candles[cursor].close)):'—'}</dd><dt>Observed closed PnL</dt><dd className={pnl>=0?'positive':'negative'}>{fills.length?usd(pnl):'—'}</dd><dt>Observed executions</dt><dd>{fills.length}</dd><dt>Estimated resting orders</dt><dd>{state.orders.length}</dd></dl><p className="inspector-note">{events.some(e=>e.kind==='fill')?'':`No ${coin} fills were returned in the bounded wallet history. `}Historical position is reconstructed from fills. Account equity and leverage at this time are unavailable.</p>{!isSpot&&state.discontinuities>0&&<p className="gap-warning">{state.discontinuities} position gaps detected in the available fills.</p>}

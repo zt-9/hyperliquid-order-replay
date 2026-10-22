@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. The app opens the multi-token example wallet `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`. **Load wallet** retrieves its saved snapshot (or syncs an unseen address); the refresh button syncs recent live history. Market shortcuts show current position direction and size. A snapshot fixture remains available at `/api/demo` for tests.
+Open http://127.0.0.1:5173. The app opens the most active fetched market in the multi-token example wallet `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`. **Load wallet** retrieves its saved snapshot (or syncs an unseen address); the refresh button syncs recent live history. Market shortcuts show current position direction and size. A snapshot fixture remains available at `/api/demo` for tests.
 
 For a single local service:
 
@@ -24,13 +24,14 @@ Open http://127.0.0.1:3001. The service binds to loopback. Wallet snapshots live
 
 ## First version
 
-- React + TypeScript terminal interface with TradingView Lightweight Charts: market candles, volume, actual fill bubbles at execution prices, estimated order lifetimes, observed position and closed PnL panes.
-- All available operations are shown initially. **Replay** advances candles with future candles and operations hidden. Play/pause, bar stepping, seek, speed, zoom, pan, and candle inspection are supported.
+- React + TypeScript terminal interface with TradingView Lightweight Charts: market candles, volume, actual execution dots plus explicit BUY/SELL arrows and aggregated quantities, estimated order lifetimes, observed position and closed PnL panes.
+- All available operations are shown initially. **Replay** defaults to trade replay: it skips empty candles and reveals each candle containing executed trades, with future candles and operations hidden. Candle-by-candle playback remains available in the replay mode selector. Play/pause, bar stepping, seek, speed, zoom, pan, and candle inspection are supported.
 - Multiple markets, automatic starting intervals, candle/line view, and execution/order/buy/sell/label filters. Current account metrics are explicitly separate from historical reconstruction.
 - Node + Express service with input validation, upstream timeouts, retry/backoff, and a sync cooldown.
 - SQLite saves raw API payloads as separate snapshots. Loading uses the latest snapshot; snapshots are not yet merged into continuous history.
 - Shared deterministic replay model, partial-fill handling, fill deduplication, and position discontinuity detection.
-- Explicit reported/inferred evidence labels and a synthetic demo.
+- An execution summary shows buy/sell quantity, volume-weighted average price and partial-fill count at the replay cursor. Arrows aggregate by candle and side; original fill records remain available under Operations. Partial labels are spaced to avoid overlap.
+- Explicit reported/inferred evidence labels and a synthetic demo fixture.
 
 ## Read the replay correctly
 

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type UTCTimestamp, type Time } from 'lightweight-charts';
+import { createSeriesMarkers, createChart, CandlestickSeries, LineSeries, HistogramSeries, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type UTCTimestamp, type Time, type ISeriesMarkersPluginApi } from 'lightweight-charts';
 import type { Candle } from '../shared/market';
 import { candleIndexAt } from '../shared/market';
+import { executionGroups } from '../shared/executions';
 import type { ReplayEvent } from '../shared/replay';
 import { OperationOverlay, type OverlayOptions } from './OperationOverlay';
 interface Props { coin:string; barSeconds:number; candles:Candle[]; events:ReplayEvent[]; cursor:number; replay:boolean; options:OverlayOptions; chartType:'candles'|'line'; onSelect:(index:number)=>void; resetKey:string; }
 export function MarketChart({coin,barSeconds,candles,events,cursor,replay,options,chartType,onSelect,resetKey}:Props) {
   const host=useRef<HTMLDivElement>(null);
-  const api=useRef<{ chart:IChartApi; price:ISeriesApi<'Candlestick'>; line:ISeriesApi<'Line'>; volume:ISeriesApi<'Histogram'>; position:ISeriesApi<'Line'>; pnl:ISeriesApi<'Line'>; overlay:OperationOverlay; overlayOn: 'candles'|'line' } | null>(null);
+  const api=useRef<{ chart:IChartApi; price:ISeriesApi<'Candlestick'>; line:ISeriesApi<'Line'>; volume:ISeriesApi<'Histogram'>; position:ISeriesApi<'Line'>; pnl:ISeriesApi<'Line'>; overlay:OperationOverlay; overlayOn: 'candles'|'line'; priceMarkers:ISeriesMarkersPluginApi<Time>; lineMarkers:ISeriesMarkersPluginApi<Time> } | null>(null);
   const latest=useRef({candles,onSelect});latest.current={candles,onSelect};
   const [hover,setHover]=useState<Candle>();
   useEffect(()=>{
@@ -30,7 +31,8 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
     const overlay=new OperationOverlay();price.attachPrimitive(overlay);
     chart.subscribeCrosshairMove(param=>{if(param.time){const i=candleIndexAt(latest.current.candles,Number(param.time));setHover(latest.current.candles[i]);}else setHover(undefined);});
     chart.subscribeClick(param=>{if(param.time){const i=candleIndexAt(latest.current.candles,Number(param.time));if(i>=0)latest.current.onSelect(i);}});
-    api.current={chart,price,line,volume,position,pnl,overlay,overlayOn:'candles'};
+    const priceMarkers=createSeriesMarkers(price,[],{autoScale:true});const lineMarkers=createSeriesMarkers(line,[],{autoScale:true});
+    api.current={chart,price,line,volume,position,pnl,overlay,overlayOn:'candles',priceMarkers,lineMarkers};
     return()=>{chart.remove();api.current=null;};
   },[]);
   useEffect(()=>{
@@ -45,6 +47,15 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
     a.line.setData(full.map(c=>c.time<=cutoff?{time:c.time,value:c.close}:{time:c.time}));
     if(a.overlayOn!==chartType){(a.overlayOn==='candles'?a.price:a.line).detachPrimitive(a.overlay);(chartType==='candles'?a.price:a.line).attachPrimitive(a.overlay);a.overlayOn=chartType;}
     a.price.applyOptions({visible:chartType==='candles'});a.line.applyOptions({visible:chartType==='line'});
+    const summaryGroups=executionGroups(candles,events,barSeconds);
+    const spacing=Math.max(1,Math.ceil(((summaryGroups.at(-1)?.index??0)-(summaryGroups[0]?.index??0))/4));
+    const lastLabel={A:-Infinity,B:-Infinity};
+    const markers=summaryGroups.filter(g=>(!replay||g.index<=cursor)&&options.fills&&(g.side==='B'?options.buys:options.sells)).map(g=>{const label=g.index-lastLabel[g.side]>=spacing;if(label)lastLabel[g.side]=g.index;return {
+      time:candles[g.index].time as UTCTimestamp,position:g.side==='B'?'belowBar' as const:'aboveBar' as const,
+      shape:g.side==='B'?'arrowUp' as const:'arrowDown' as const,color:g.side==='B'?'#40e4b6':'#ff8294',
+      text:label?`${g.side==='B'?'BUY':'SELL'}${options.labels?' '+g.size.toLocaleString('en-US',{maximumFractionDigits:3}):''}${g.count>1?' ×'+g.count:''}`:'',size:1,
+    };});
+    a.priceMarkers.setMarkers(chartType==='candles'?markers:[]);a.lineMarkers.setMarkers(chartType==='line'?markers:[]);
     a.volume.setData(full.map(c=>c.time<=cutoff?{time:c.time,value:c.volume,color:c.close>=c.open?'#29b69a30':'#e5647730'}:{time:c.time}));
     const fills=events.filter(e=>e.fill);let j=0,position:number|null=null,pnl=0;
     const positions:({time:UTCTimestamp;value:number}|{time:UTCTimestamp})[]=[],pnls:({time:UTCTimestamp;value:number}|{time:UTCTimestamp})[]=[];
@@ -59,7 +70,7 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
     a.overlay.candles=candles;a.overlay.events=events;a.overlay.cutoff=replay?(candles[cursor+1]?.time??(candles[cursor]?.time??0)+barSeconds)-.001:Infinity;a.overlay.options=options;a.overlay.refresh();
   },[candles,events,cursor,replay,options,chartType,coin,barSeconds]);
   useEffect(()=>{if(replay&&candles.length)api.current?.chart.timeScale().setVisibleLogicalRange({from:Math.max(-5,cursor-100),to:Math.max(100,cursor+15)});},[cursor,replay,candles]);
-  useEffect(()=>{const a=api.current;if(!a||!candles.length)return;a.chart.timeScale().fitContent();},[candles,resetKey]);
+  useEffect(()=>{const a=api.current;if(!a||!candles.length)return;const executions=executionGroups(candles,events,barSeconds);if(executions.length)a.chart.timeScale().setVisibleLogicalRange({from:Math.max(-2,executions[0].index-10),to:candles.length+7});else a.chart.timeScale().fitContent();},[candles,resetKey]);
   const formatPrice=(value:number)=>value.toLocaleString('en-US',{maximumFractionDigits:value>=100?2:value>=1?4:value>=.01?6:8});
   const candle=(hover && (!replay || hover.time <= (candles[cursor]?.time ?? 0)) ? hover : undefined)??candles[replay?cursor:candles.length-1];
   return <div className="chart-frame"><div className="ohlc"><b>OHLC</b>{candle?<><span>O <em>{formatPrice(candle.open)}</em></span><span>H <em>{formatPrice(candle.high)}</em></span><span>L <em>{formatPrice(candle.low)}</em></span><span>C <em className={candle.close>=candle.open?'positive':'negative'}>{formatPrice(candle.close)}</em></span></>:<span>No candle selected</span>}<span className="utc-label">UTC</span></div><div className="chart-host" ref={host} role="img" aria-label="Interactive candlestick chart with volume, historical fills, order lifetimes, position, and observed closed PnL"/><span className="pane-label position-label">POSITION · OBSERVED FILLS</span><span className="pane-label pnl-label">CLOSED PNL · BEFORE FEES & FUNDING</span></div>;

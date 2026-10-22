@@ -49,12 +49,11 @@ export class OperationOverlay implements ISeriesPrimitive {
         if(event.kind!=='fill' || !permitted(event) || event.time/1000 < first || event.time/1000 > last + 86400) continue;
         const px=x(event.time/1000), py=series.priceToCoordinate(Number(event.price));
         if(px===null || py===null || px<0 || px>mediaSize.width || py<0 || py>mediaSize.height) continue;
-        const radius=Math.min(13,Math.max(3,Math.sqrt(Number(event.size)*Number(event.price))/40));
+        const radius=2.5;
         const color=event.side==='B'?'#2dd4aa':'#fa6b7c';
-        ctx.globalAlpha=.22;ctx.fillStyle=color;ctx.beginPath();ctx.arc(px,py,radius,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.95;ctx.strokeStyle=color;ctx.lineWidth=1.2;ctx.stroke();
+        ctx.globalAlpha=.35;ctx.fillStyle=color;ctx.beginPath();ctx.arc(px,py,radius,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.55;ctx.strokeStyle=color;ctx.lineWidth=.7;ctx.stroke();
         ctx.beginPath();ctx.moveTo(px-2,py+(event.side==='B'?2:-2));ctx.lineTo(px,py+(event.side==='B'?-2:2));ctx.lineTo(px+2,py+(event.side==='B'?2:-2));ctx.stroke();
-        if(this.options.labels) {ctx.font='10px ui-monospace,monospace';ctx.fillStyle=color;ctx.fillText(`${event.side==='B'?'+':'−'}${event.size}`,px+radius+3,py+3);}
       }
       ctx.restore();
     });
