@@ -51,6 +51,8 @@ export class OperationOverlay implements ISeriesPrimitive {
         if(terminal && b>=0 && b<=mediaSize.width) {ctx.beginPath();ctx.moveTo(b-2,py-2);ctx.lineTo(b+2,py+2);ctx.moveTo(b-2,py+2);ctx.lineTo(b+2,py-2);ctx.stroke();}
       }
       this.markers=[];
+      let selectionShown=false;
+      const selectedIndex=this.selectedEvent?candleIndexAt(this.candles,this.selectedEvent.time/1000):-1;
       if(this.options.fills){
         const groups=executionGroups(this.candles,visible.filter(permitted),this.barSeconds);
         const clusters=clusterExecutions(groups,index=>scale.logicalToCoordinate(index as Logical),mediaSize.width);
@@ -61,27 +63,29 @@ export class OperationOverlay implements ISeriesPrimitive {
           const anchor=series.priceToCoordinate(anchorPrice);
           if(anchor===null||anchor<0||anchor>mediaSize.height)continue;
           const py=Math.max(12,Math.min(mediaSize.height-12,anchor+(buy?17:-17)));
-          const highlighted=this.highlightedId===cluster.id||cluster.events.some(e=>e.id===this.selectedEvent?.id);
+          const selected=!!this.selectedEvent&&cluster.side===this.selectedEvent.side&&(cluster.events.some(e=>e.id===this.selectedEvent?.id)||(this.selectedEvent.kind!=='fill'&&selectedIndex>=cluster.firstIndex&&selectedIndex<=cluster.lastIndex));
+          if(selected)selectionShown=true;
+          const highlighted=this.highlightedId===cluster.id||selected;
           ctx.globalAlpha=highlighted?1:.9;
           ctx.strokeStyle=buy?'#39cea4':'#f2798c';ctx.lineWidth=highlighted?1.8:1;
           ctx.beginPath();ctx.moveTo(cluster.x,anchor+(buy?2:-2));ctx.lineTo(cluster.x,py+(buy?-9:9));ctx.stroke();
-          ctx.fillStyle=buy?'#123c33':'#4b2530';ctx.beginPath();ctx.roundRect(cluster.x-9,py-9,18,18,4);ctx.fill();ctx.stroke();
+          ctx.fillStyle=buy?(selected?'#226a54':'#123c33'):(selected?'#7d3549':'#4b2530');ctx.beginPath();ctx.roundRect(cluster.x-9,py-9,18,18,4);ctx.fill();ctx.stroke();
+          if(selected){ctx.globalAlpha=1;ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(cluster.x-12,py-12,24,24,6);ctx.stroke();}
           ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
           ctx.fillStyle=buy?'#74e8c5':'#ffa8b6';ctx.fillText(buy?'B':'S',cluster.x,py+.5);
-          if(highlighted){const avg=series.priceToCoordinate(cluster.price);if(avg!==null){ctx.setLineDash([2,3]);ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(cluster.x-18,avg);ctx.lineTo(cluster.x+18,avg);ctx.stroke();ctx.setLineDash([]);}}
+
           this.markers.push({id:cluster.id,x:cluster.x,y:py,cluster});
         }
       }
       const selected=this.selectedEvent;
-      if(selected&&selected.time/1000<=this.cutoff){
-        const px=x(selected.time/1000),py=series.priceToCoordinate(Number(selected.price));
-        if(px!==null&&px>=0&&px<=mediaSize.width){
-          ctx.globalAlpha=.12;ctx.fillStyle='#f2cd80';ctx.fillRect(px-7,0,14,mediaSize.height);
-          ctx.globalAlpha=.9;ctx.strokeStyle='#f2cd80';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,mediaSize.height);ctx.stroke();ctx.setLineDash([]);
-          if(py!==null&&py>=0&&py<=mediaSize.height){ctx.fillStyle='#11151e';ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fill();ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.moveTo(px-13,py);ctx.lineTo(px+13,py);ctx.stroke();}
-          const label=selected.kind==='fill'?'SELECTED TRADE':'SELECTED ORDER';
-          ctx.font='600 9px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
-          const labelX=Math.max(6,Math.min(mediaSize.width-115,px+10));ctx.fillStyle='#252a2c';ctx.fillRect(labelX-4,8,110,18);ctx.fillStyle='#f2cd80';ctx.fillText(label,labelX,12);
+      if(selected&&!selectionShown&&selectedIndex>=0&&selected.time/1000<=this.cutoff){
+        const bar=this.candles[selectedIndex],px=scale.logicalToCoordinate(selectedIndex as Logical),buy=selected.side==='B';
+        const anchor=series.priceToCoordinate(buy?bar.low:bar.high);
+        if(px!==null&&anchor!==null&&px>=0&&px<=mediaSize.width){
+          const py=Math.max(14,Math.min(mediaSize.height-14,anchor+(buy?17:-17)));
+          ctx.globalAlpha=1;ctx.strokeStyle=buy?'#62e8bf':'#ffa4b6';ctx.fillStyle=buy?'#226a54':'#7d3549';ctx.lineWidth=2;
+          ctx.beginPath();ctx.roundRect(px-10,py-10,20,20,4);ctx.fill();ctx.stroke();ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(px-13,py-13,26,26,6);ctx.stroke();
+          ctx.font='600 10px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=buy?'#b8ffe5':'#ffd4dd';ctx.fillText(buy?'B':'S',px,py+.5);
         }
       }
       ctx.restore();

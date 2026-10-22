@@ -67,9 +67,9 @@ The execution marker interaction follows [Binance’s B/S history icons](https:/
 
 ## Shared wallet and chart selection
 
-A single wallet control lives in the application header above both tabs. It shows the active address with Copy, Change and Refresh actions; Change edits the address in place with Load/Cancel. Both views use the same loaded snapshot.
+A single wallet control lives in the application header above both tabs. It shows the active address in an aligned toolbar with Copy, Change and Refresh actions; Change edits the address in place with Load/Cancel. Both views use the same loaded snapshot.
 
-Clicking an activity or execution marker selects its event directly, centers the chart around it, marks its precise time and price, and shows its details above the activity list. There is no extra Inspect candle step or bottom detail card. Clicking a candle pins its OHLC and reconstructed state. Hover readouts show position and closed PnL at that candle with decimal precision; these are candle-close observations, not intrabar position samples.
+Clicking an activity or execution marker selects its event directly, centers the chart around it, emphasizes its Buy/Sell badge, and shows the selected event and candle context in one unified inspector above the activity list. There is no extra Inspect candle step or bottom detail card. Clicking a candle pins its OHLC and reconstructed state. Hover readouts show position and closed PnL at that candle with decimal precision; these are candle-close observations, not intrabar position samples.
 
 ## Trade history tab
 

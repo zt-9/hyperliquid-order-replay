@@ -90,7 +90,6 @@ export function MarketChart({coin,barSeconds,candles,events,cursor,replay,option
     const range=a.chart.timeScale().getVisibleLogicalRange();
     const span=Math.min(100,Math.max(24,range?range.to-range.from:70));
     a.chart.timeScale().setVisibleLogicalRange({from:index-span/2,to:index+span/2});
-    a.chart.setCrosshairPosition(Number(selectedEvent.price),candles[index].time as UTCTimestamp,chartType==='candles'?a.price:a.line);
   },[selectedEvent,focusKey,candles,chartType]);
   const formatPrice=(value:number)=>value.toLocaleString('en-US',{maximumFractionDigits:value>=100?2:value>=1?4:value>=.01?6:8});
   const candle=(hover && (!replay || hover.time <= (candles[cursor]?.time ?? 0)) ? hover : undefined)??candles[replay?cursor:candles.length-1];
