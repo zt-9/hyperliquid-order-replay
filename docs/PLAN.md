@@ -35,13 +35,23 @@ The default example is `0x936cf4fb95c30ce83f658b5bbb247e4bb381bb0f`, a multi-tok
 
 Same-millisecond fill ordering now preserves source chronology: trade IDs cannot be used as execution sequence numbers. Stale historical open records absent from current open orders are excluded from estimated lifetimes. Candles are fetched separately, briefly cached, and queued to avoid conflicting requests during token/interval switches.
 
-### 2b. Extend observed history — next
+### 2b. Wallet leverage observatory and account recorder — implemented
 
-Paginate fills with timestamp overlap and deduplication; flag ambiguous page boundaries; show per-source coverage bounds; validate upstream payload schemas. Merge recorded observations with stable event identities while retaining provenance and retrieval times. Add wallet bookmarks, shareable cursor URLs, raw export, and additional perp DEX discovery. Add independent server/API integration tests.
+Added a separate wallet-wide effective-leverage chart. All perpetual DEXs are discovered and queried; the example exposes 43 positions across native and builder DEXs rather than only the 37 native positions. Numerators sum absolute notionals. Recorded equity uses non-duplicated standard-mode DEX balances with collateral conversion. Shared-equity account modes are retained raw but ratios are withheld pending mode-aware valuation.
+
+SQLite stores raw account frames approximately every 30 seconds in a worker independent of browser visits, with a durable watch list, error observations and pause/resume. Watchers resume after service restarts. Missing or delayed recording creates explicit chart gaps.
+
+Backfill uses up to 10,000 timestamp-overlapped fills with a fixed cutoff, all relevant markets (including unchanged and closed positions), completed 5-minute market prices and bounded interpolation of historical perpetual equity samples. Missing any position price or valid equity, unsupported historical collateral conversion, or fill continuity gaps withhold affected points. Current portfolio-equity alignment is checked before building estimates. The chart distinguishes estimates from observations and follows replay cutoff without filtering to the selected market.
+
+The UI now separates Wallet Overview, market selection and market details. Token names appear in the market heading instead of every metric; Resting Orders and Operations are renamed Open Orders and Activity. The original H↗ REPLAY logo remains.
+
+### 2c. Extend observed history — next
+
+Reuse the leverage backfill’s timestamp overlap/deduplication in the trade-replay timeline; show per-source coverage bounds; validate upstream payload schemas. Merge recorded observations with stable event identities while retaining provenance and retrieval times. Add wallet bookmarks, shareable cursor URLs, raw export, and full DEX order/market metadata support. Add independent server/API integration tests.
 
 ### 3. Record forward and deploy reliably
 
-Persist websocket order updates and fills. Distinguish subscription snapshots from new events; reconnect and backfill with explicit gap tracking. Record account equity and per-position leverage settings alongside order/fill observations so leverage replay is source-backed from the recording start. Existing fill-only history cannot supply past margin settings or equity. Add a provider contract for archive/node history. Run ingestion as a worker independent of page visits. Package deployment, add health/readiness, metrics, retention, backups, authentication and rate limits. SQLite is sufficient for one host; adopt Postgres when concurrent writers or deployment needs justify it.
+Persist websocket order updates and fills. Distinguish subscription snapshots from new events; reconnect and backfill with explicit gap tracking. Extend the account-state recorder with websocket state/fill/order updates and explicit reconciliation so changes between periodic snapshots are retained. Existing fill-only history cannot supply past margin settings or equity. Add a provider contract for archive/node history. Run ingestion as a worker independent of page visits. Package deployment, add health/readiness, metrics, retention, backups, authentication and rate limits. SQLite is sufficient for one host; adopt Postgres when concurrent writers or deployment needs justify it.
 
 ### 4. Optional analysis
 
@@ -53,4 +63,4 @@ First establish forward stream quality and replay correctness. Start with paper 
 
 ## Key limitations of milestone 1
 
-No live websocket recording, archival data, fill pagination, snapshot merging, order edit reconstruction, spot balances, full performance statistics, Docker packaging, authentication, or production hardening. The latest snapshot remains a bounded observation even if multiple raw snapshots have been saved. Same-millisecond placement/fill/status ordering is a deterministic display convention; fills retain source chronology.
+No live websocket fill/order recording, archival data, trade-snapshot merging, order edit reconstruction, spot balances, full performance statistics, Docker packaging, authentication, or production hardening. The latest snapshot remains a bounded observation even if multiple raw snapshots have been saved. Same-millisecond placement/fill/status ordering is a deterministic display convention; fills retain source chronology.

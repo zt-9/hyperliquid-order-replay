@@ -4,8 +4,18 @@ import type { Fill, HistoricalOrder, Order, Snapshot } from '../shared/replay.js
 export interface HistoryProvider { snapshot(wallet: string): Promise<Snapshot> }
 export const validWallet = (wallet: string) => /^0x[0-9a-fA-F]{40}$/.test(wallet);
 export class PublicApiProvider implements HistoryProvider {
+  private charges:{at:number;cost:number}[]=[];
+  private async reserve(type:string){
+    const light=['clearinghouseState','allMids','spotClearinghouseState'].includes(type);
+    const cost=type==='userFillsByTime'||type==='userFills'?120:type==='candleSnapshot'?105:light?2:20;
+    for(;;){const now=Date.now();this.charges=this.charges.filter(c=>now-c.at<60000);
+      if(this.charges.reduce((n,c)=>n+c.cost,0)+cost<=1000){const entry={at:now,cost};this.charges.push(entry);return entry;}
+      await new Promise(resolve=>setTimeout(resolve,Math.max(50,60010-(now-this.charges[0].at))));
+    }
+  }
   async info<T>(type: string, wallet?: string, extra: Record<string, unknown> = {}): Promise<T> {
     for (let attempt = 0; attempt < 3; attempt++) {
+      const charge=await this.reserve(type);
       const response = await fetch('https://api.hyperliquid.xyz/info', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, ...(wallet ? { user: wallet } : {}), ...extra }), signal: AbortSignal.timeout(15000),
@@ -16,7 +26,9 @@ export class PublicApiProvider implements HistoryProvider {
       }
       if (!response.ok) throw new Error(`Hyperliquid ${type} request failed (${response.status})`);
       const data: unknown = await response.json();
-      if (!data || typeof data !== 'object') throw new Error(`Unexpected ${type} response`);
+      if(Array.isArray(data)&&(type==='userFills'||type==='userFillsByTime'))charge.cost=20+Math.ceil(data.length/20);
+      else if(Array.isArray(data)&&type==='candleSnapshot')charge.cost=20+Math.ceil(data.length/60);
+      if (data === null || data === undefined) throw new Error(`Unexpected ${type} response`);
       return data as T;
     }
     throw new Error('Hyperliquid is temporarily unavailable');

@@ -4,6 +4,9 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { PublicApiProvider, validWallet } from './provider.js';
 import { INTERVALS, type Interval } from '../shared/market.js';
+import { AccountProvider } from './account-provider.js';
+import { AccountRecorder } from './recorder.js';
+import { LeverageHistory } from './leverage-history.js';
 import { demoSnapshot } from './demo.js';
 mkdirSync('data', { recursive: true });
 const db = new DatabaseSync('data/replay.sqlite');
@@ -11,6 +14,9 @@ db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS snapshots (id INTEG
 const app = express();
 app.disable('x-powered-by');
 const provider = new PublicApiProvider();
+const recorder=new AccountRecorder(db,new AccountProvider(provider));
+const leverageHistory=new LeverageHistory(db,recorder);
+recorder.start();
 let syncing = false;
 let nextSync = 0;
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -46,6 +52,29 @@ app.get('/api/candles', async (req, res) => {
   }
   try { res.json(await pending); }
   catch (error) { console.error('Candle fetch failed:', error); res.status(502).json({ error: 'Could not load market candles. Try another interval or retry.' }); }
+});
+app.get('/api/wallet/:wallet/leverage', (req,res)=>{
+  const wallet=req.params.wallet.toLowerCase();
+  if(!validWallet(wallet)){res.status(400).json({error:'Invalid wallet address'});return;}
+  res.json(leverageHistory.response(wallet));
+});
+app.post('/api/wallet/:wallet/recording/start', (req,res)=>{
+  const wallet=req.params.wallet.toLowerCase();
+  if(!validWallet(wallet)){res.status(400).json({error:'Invalid wallet address'});return;}
+  try{recorder.register(wallet);void recorder.capture(wallet).catch(()=>undefined);
+    const status=leverageHistory.response(wallet);if(status.job.status==='idle')leverageHistory.start(wallet);
+    res.status(202).json(recorder.status(wallet));
+  }catch(error){res.status(400).json({error:error instanceof Error?error.message:'Could not start recording'});}
+});
+app.post('/api/wallet/:wallet/recording/stop', (req,res)=>{
+  const wallet=req.params.wallet.toLowerCase();
+  if(!validWallet(wallet)){res.status(400).json({error:'Invalid wallet address'});return;}
+  db.prepare('UPDATE watched_wallets SET enabled=0 WHERE wallet=?').run(wallet);res.json(recorder.status(wallet));
+});
+app.post('/api/wallet/:wallet/leverage/rebuild',(req,res)=>{
+  const wallet=req.params.wallet.toLowerCase();
+  if(!validWallet(wallet)){res.status(400).json({error:'Invalid wallet address'});return;}
+  leverageHistory.start(wallet);res.status(202).json({status:'building'});
 });
 app.get('/api/wallet/:wallet', (req, res) => {
   const wallet = req.params.wallet.toLowerCase();
